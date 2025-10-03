@@ -4,6 +4,7 @@ use cpal::{FromSample, Sample};
 use enigo::{Enigo, Key, Keyboard, Settings};
 use image::GenericImageView;
 use parking_lot::Mutex;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{
     image::Image,
@@ -13,9 +14,82 @@ use tauri::{
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
+
+// Whisper model filename
+const WHISPER_MODEL_NAME: &str = "ggml-large-v3-turbo.bin";
+
+// Get the model file path in app data directory
+fn get_model_path(app: &AppHandle) -> PathBuf {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .expect("Failed to get app data dir");
+    std::fs::create_dir_all(&app_data_dir).ok();
+    app_data_dir.join("models").join(WHISPER_MODEL_NAME)
+}
+
+// Check if model exists
+fn model_exists(app: &AppHandle) -> bool {
+    get_model_path(app).exists()
+}
+
+// Download Whisper model from HuggingFace
+fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let model_path = get_model_path(app);
+
+    // Create models directory if it doesn't exist
+    if let Some(parent) = model_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    println!("Downloading Whisper large-v3-turbo model (~1.5GB)...");
+
+    // Download from HuggingFace
+    let url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
+
+    let mut response = reqwest::blocking::get(url)?;
+
+    if !response.status().is_success() {
+        return Err(format!("Failed to download model: HTTP {}", response.status()).into());
+    }
+
+    // Stream directly to temporary file
+    let temp_path = model_path.with_extension("bin.tmp");
+    let mut file = std::fs::File::create(&temp_path)?;
+
+    println!("Downloading model, streaming to disk...");
+    let bytes_written = std::io::copy(&mut response, &mut file)?;
+    println!("Downloaded {} MB", bytes_written / 1024 / 1024);
+
+    // Rename temp file to final name (atomic operation)
+    std::fs::rename(&temp_path, &model_path)?;
+
+    println!("Model downloaded successfully to: {:?}", model_path);
+    Ok(())
+}
+
+// Load Whisper model (with Metal GPU support)
+fn load_whisper_model(app: &AppHandle) -> Result<WhisperContext, Box<dyn std::error::Error>> {
+    let model_path = get_model_path(app);
+
+    if !model_path.exists() {
+        return Err("Model not found. Please download the model first.".into());
+    }
+
+    println!("Loading Whisper model from: {:?}", model_path);
+
+    // WhisperContext will automatically use Metal GPU if compiled with metal feature
+    let params = WhisperContextParameters::default();
+    let ctx =
+        WhisperContext::new_with_params(model_path.to_str().ok_or("Invalid model path")?, params)?;
+
+    println!("Whisper model loaded successfully (Metal GPU enabled via feature flag)");
+    Ok(ctx)
+}
 
 // Audio recording state - stores the stream and buffers audio data
 struct AudioRecorder {
@@ -322,11 +396,67 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(Arc::new(Mutex::new(None::<WhisperContext>))) // Whisper model state
         .invoke_handler(tauri::generate_handler![greet])
         .setup(|app| {
             // Hide from dock on macOS
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Check if Whisper model exists, download if missing
+            let model_ready = if !model_exists(app.handle()) {
+                println!(
+                    "Whisper model not found at: {:?}",
+                    get_model_path(app.handle())
+                );
+                println!("Starting model download in background...");
+
+                // Spawn download in background thread
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    match download_model(&app_handle) {
+                        Ok(_) => {
+                            println!("Model download complete! Loading model...");
+                            // Try to load the model after download
+                            match load_whisper_model(&app_handle) {
+                                Ok(ctx) => {
+                                    let whisper_state: tauri::State<
+                                        Arc<Mutex<Option<WhisperContext>>>,
+                                    > = app_handle.state();
+                                    *whisper_state.lock() = Some(ctx);
+                                    println!(
+                                        "Whisper model initialized successfully after download"
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!("Failed to load Whisper model after download: {}", e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to download Whisper model: {}", e);
+                        }
+                    }
+                });
+                false
+            } else {
+                println!("Whisper model found, loading...");
+                match load_whisper_model(app.handle()) {
+                    Ok(ctx) => {
+                        let whisper_state: tauri::State<Arc<Mutex<Option<WhisperContext>>>> =
+                            app.state();
+                        *whisper_state.lock() = Some(ctx);
+                        println!("Whisper model initialized successfully");
+                        true
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to load Whisper model: {}", e);
+                        false
+                    }
+                }
+            };
+
+            println!("Model ready: {}", model_ready);
 
             // Create menu items
             let show_i = MenuItem::with_id(app, "show", "Settings", true, None::<&str>)?;
