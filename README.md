@@ -1,3 +1,3 @@
 # Sotto
 
-Open-source transcription app for macOS.
+Open-source voice transcription app for macOS.
