@@ -9,16 +9,215 @@
   </head>
 
   <body>
-    <main class="container">
-      <h1>Welcome to Sotto</h1>
+    <main class="settings-container">
+      <header class="settings-header">
+        <h1>Settings</h1>
+        <p class="subtitle">Configure your Sotto preferences</p>
+      </header>
 
-      <p>Open-source voice transcription app for macOS.</p>
+      <div class="settings-content">
+        <nav class="settings-nav">
+          <button class="nav-item active" data-tab="general">
+            <i data-lucide="settings" class="icon"></i>
+            General
+          </button>
+          <button class="nav-item" data-tab="audio">
+            <i data-lucide="mic" class="icon"></i>
+            Audio
+          </button>
+          <button class="nav-item" data-tab="shortcuts">
+            <i data-lucide="keyboard" class="icon"></i>
+            Shortcuts
+          </button>
+          <button class="nav-item" data-tab="privacy">
+            <i data-lucide="lock" class="icon"></i>
+            Privacy
+          </button>
+          <button class="nav-item" data-tab="about">
+            <i data-lucide="info" class="icon"></i>
+            About
+          </button>
+        </nav>
 
-      <form class="row" id="greet-form">
-        <input id="greet-input" placeholder="Enter a name..." />
-        <button type="submit">Greet</button>
-      </form>
-      <p id="greet-msg"></p>
+        <div class="settings-panel">
+          <!-- General Settings -->
+          <div class="tab-content active" id="general">
+            <h2>General</h2>
+            
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="launch-startup">Launch at startup</label>
+                  <span class="setting-description">Start Sotto automatically when you log in</span>
+                </div>
+                <input type="checkbox" id="launch-startup" class="toggle">
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="show-notifications">Show notifications</label>
+                  <span class="setting-description">Display notifications for transcription events</span>
+                </div>
+                <input type="checkbox" id="show-notifications" class="toggle" checked>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="auto-copy">Auto-copy to clipboard</label>
+                  <span class="setting-description">Automatically copy transcription results to clipboard</span>
+                </div>
+                <input type="checkbox" id="auto-copy" class="toggle" checked>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="language">Default language</label>
+                  <span class="setting-description">Primary language for transcription</span>
+                </div>
+                <select id="language" class="select-input">
+                  <option value="en">English</option>
+                  <option value="es">Spanish</option>
+                  <option value="fr">French</option>
+                  <option value="de">German</option>
+                  <option value="ja">Japanese</option>
+                  <option value="zh">Chinese</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Audio Settings -->
+          <div class="tab-content" id="audio">
+            <h2>Audio</h2>
+            
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="input-device">Input device</label>
+                  <span class="setting-description">Select your microphone or audio input</span>
+                </div>
+                <select id="input-device" class="select-input">
+                  <option value="default">Default</option>
+                  <option value="built-in">Built-in Microphone</option>
+                </select>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="sample-rate">Sample rate</label>
+                  <span class="setting-description">Audio quality for recording</span>
+                </div>
+                <select id="sample-rate" class="select-input">
+                  <option value="16000">16 kHz</option>
+                  <option value="44100">44.1 kHz</option>
+                  <option value="48000" selected>48 kHz</option>
+                </select>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="noise-reduction">Noise reduction</label>
+                  <span class="setting-description">Reduce background noise in recordings</span>
+                </div>
+                <input type="checkbox" id="noise-reduction" class="toggle" checked>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shortcuts Settings -->
+          <div class="tab-content" id="shortcuts">
+            <h2>Keyboard Shortcuts</h2>
+            
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label>Start/Stop recording</label>
+                  <span class="setting-description">Toggle voice recording</span>
+                </div>
+                <kbd class="shortcut">⌘ + Shift + R</kbd>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label>Open settings</label>
+                  <span class="setting-description">Show this settings window</span>
+                </div>
+                <kbd class="shortcut">⌘ + ,</kbd>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label>Show/Hide window</label>
+                  <span class="setting-description">Toggle window visibility</span>
+                </div>
+                <kbd class="shortcut">⌘ + Shift + S</kbd>
+              </div>
+            </div>
+          </div>
+
+          <!-- Privacy Settings -->
+          <div class="tab-content" id="privacy">
+            <h2>Privacy & Security</h2>
+            
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="save-history">Save transcription history</label>
+                  <span class="setting-description">Keep a local history of your transcriptions</span>
+                </div>
+                <input type="checkbox" id="save-history" class="toggle" checked>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label for="local-processing">Process locally</label>
+                  <span class="setting-description">Keep all transcription on-device (no cloud)</span>
+                </div>
+                <input type="checkbox" id="local-processing" class="toggle" checked>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-label">
+                  <label>Clear history</label>
+                  <span class="setting-description">Delete all saved transcriptions</span>
+                </div>
+                <button class="danger-button">Clear All Data</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- About Settings -->
+          <div class="tab-content" id="about">
+            <h2>About Sotto</h2>
+            
+            <div class="about-content">
+              <div class="about-icon">
+                <i data-lucide="mic-2"></i>
+              </div>
+              <h3>Sotto</h3>
+              <p class="version">Version 1.0.0</p>
+              <p class="about-description">
+                Open-source voice transcription app for macOS.
+                <br>Built with Tauri and TypeScript.
+              </p>
+              
+              <div class="about-links">
+                <a href="https://github.com/yourusername/sotto" class="link-button" target="_blank">
+                  View on GitHub
+                </a>
+                <a href="https://github.com/yourusername/sotto/issues" class="link-button" target="_blank">
+                  Report Issue
+                </a>
+              </div>
+
+              <div class="about-footer">
+                <p>© 2025 Sotto Contributors</p>
+                <p class="license">Released under MIT License</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </body>
 </html>
