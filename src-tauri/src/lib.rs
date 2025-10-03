@@ -1,5 +1,6 @@
 use chrono::Local;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{FromSample, Sample};
 use enigo::{Enigo, Key, Keyboard, Settings};
 use image::GenericImageView;
 use parking_lot::Mutex;
@@ -16,37 +17,97 @@ use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
 
-// Audio recording state - stores the stream to properly manage its lifecycle
+// Audio recording state - stores the stream and buffers audio data
 struct AudioRecorder {
     stream: Option<cpal::Stream>,
+    buffer: Arc<Mutex<Vec<f32>>>,
+    sample_rate: u32,
+    temp_buffer: Arc<Mutex<Vec<f32>>>, // Temporary buffer for incoming 48kHz samples
 }
 
 // Safety: AudioRecorder is only accessed from the main thread via parking_lot::Mutex
-// parking_lot doesn't require Send, but Tauri State does, so we implement it manually
 unsafe impl Send for AudioRecorder {}
 unsafe impl Sync for AudioRecorder {}
 
 impl AudioRecorder {
     fn new() -> Self {
-        Self { stream: None }
+        Self {
+            stream: None,
+            buffer: Arc::new(Mutex::new(Vec::new())),
+            sample_rate: 0,
+            temp_buffer: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.stream.is_none() {
+            // Clear previous buffers
+            self.buffer.lock().clear();
+            self.temp_buffer.lock().clear();
+
             // Get the default audio host and input device
             let host = cpal::default_host();
             let device = host
                 .default_input_device()
                 .ok_or("No input device available")?;
 
-            let config = device.default_input_config()?;
+            // Try to get 16kHz config (Whisper requirement)
+            let config = match device.supported_input_configs() {
+                Ok(configs) => {
+                    // Try to find a 16kHz mono config
+                    let mut found_16khz = None;
+                    for config in configs {
+                        if config.min_sample_rate().0 <= 16000
+                            && config.max_sample_rate().0 >= 16000
+                        {
+                            // Found a config that supports 16kHz
+                            found_16khz = Some(config.with_sample_rate(cpal::SampleRate(16000)));
+                            break;
+                        }
+                    }
+
+                    match found_16khz {
+                        Some(cfg) => cfg,
+                        None => {
+                            // Fallback to default config if 16kHz not supported
+                            println!("16kHz not supported, using default config");
+                            device.default_input_config()?
+                        }
+                    }
+                }
+                Err(_) => device.default_input_config()?,
+            };
+
+            self.sample_rate = config.sample_rate().0;
             println!("Starting audio capture with config: {:?}", config);
 
-            // Create the audio stream based on sample format
+            // Create the audio stream based on sample format with buffering
+            let buffer_clone = self.buffer.clone();
+            let temp_buffer_clone = self.temp_buffer.clone();
+            let record_sample_rate = self.sample_rate;
+
             let stream = match config.sample_format() {
-                cpal::SampleFormat::F32 => build_input_stream::<f32>(&device, &config.into())?,
-                cpal::SampleFormat::I16 => build_input_stream::<i16>(&device, &config.into())?,
-                cpal::SampleFormat::U16 => build_input_stream::<u16>(&device, &config.into())?,
+                cpal::SampleFormat::F32 => build_input_stream::<f32>(
+                    &device,
+                    &config.into(),
+                    buffer_clone,
+                    temp_buffer_clone,
+                    record_sample_rate,
+                )?,
+                cpal::SampleFormat::I16 => build_input_stream::<i16>(
+                    &device,
+                    &config.into(),
+                    buffer_clone,
+                    temp_buffer_clone,
+                    record_sample_rate,
+                )?,
+                cpal::SampleFormat::U16 => build_input_stream::<u16>(
+                    &device,
+                    &config.into(),
+                    buffer_clone,
+                    temp_buffer_clone,
+                    record_sample_rate,
+                )?,
                 _ => return Err("Unsupported sample format".into()),
             };
 
@@ -56,26 +117,67 @@ impl AudioRecorder {
         Ok(())
     }
 
-    fn stop(&mut self) {
+    fn stop(&mut self) -> Vec<f32> {
         if let Some(stream) = self.stream.take() {
-            // Explicitly drop the stream to release microphone access
             drop(stream);
             println!("Audio capture stopped - microphone released");
         }
+
+        // Get the buffered audio (already resampled to 16kHz in real-time) and clear
+        let audio_data = self.buffer.lock().clone();
+        self.buffer.lock().clear();
+        self.temp_buffer.lock().clear();
+
+        println!(
+            "Captured {} samples at 16kHz (recorded at {}Hz)",
+            audio_data.len(),
+            self.sample_rate
+        );
+
+        audio_data
+    }
+
+    fn get_sample_rate(&self) -> u32 {
+        self.sample_rate
     }
 }
 
 fn build_input_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
+    buffer: Arc<Mutex<Vec<f32>>>,
+    temp_buffer: Arc<Mutex<Vec<f32>>>,
+    sample_rate: u32,
 ) -> Result<cpal::Stream, Box<dyn std::error::Error>>
 where
     T: cpal::Sample + cpal::SizedSample,
+    f32: FromSample<T>,
 {
     let stream = device.build_input_stream(
         config,
-        move |_data: &[T], _: &cpal::InputCallbackInfo| {
-            // Just listening, not storing data
+        move |data: &[T], _: &cpal::InputCallbackInfo| {
+            // Convert samples to f32
+            let mut temp = temp_buffer.lock();
+            for &sample in data {
+                temp.push(f32::from_sample(sample));
+            }
+
+            // If recording at 48kHz, downsample to 16kHz in real-time
+            if sample_rate == 48000 && temp.len() >= 3 {
+                let mut buf = buffer.lock();
+                // Simple decimation: take every 3rd sample (48000/3 = 16000)
+                for i in (0..temp.len()).step_by(3) {
+                    if let Some(&sample) = temp.get(i) {
+                        buf.push(sample);
+                    }
+                }
+                temp.clear();
+            } else if sample_rate == 16000 {
+                // Already 16kHz, just copy directly
+                let mut buf = buffer.lock();
+                buf.extend_from_slice(&temp);
+                temp.clear();
+            }
         },
         |err| eprintln!("Audio stream error: {}", err),
         None,
@@ -183,16 +285,34 @@ pub fn run() {
                                     let icon = default_icon_clone.lock();
                                     let _ = tray.set_icon(Some(icon.clone()));
 
-                                    // Stop audio capture
+                                    // Stop audio capture and get buffered audio
                                     let mut recorder = audio_recorder_clone.lock();
-                                    recorder.stop();
+                                    let audio_samples = recorder.stop();
+                                    let sample_rate = recorder.get_sample_rate();
                                     println!("Option+Space released - recording stopped");
 
-                                    // Insert current datetime at cursor position
+                                    // Calculate audio duration in seconds
+                                    let duration_secs = if sample_rate > 0
+                                        && !audio_samples.is_empty()
+                                    {
+                                        audio_samples.len() as f32 / 16000.0 // Always 16kHz after resampling
+                                    } else {
+                                        0.0
+                                    };
+
+                                    // TODO: Transcribe audio_samples using Whisper
+                                    // For now, insert datetime with duration
                                     let datetime =
                                         Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                                    match insert_text_at_cursor(app, &datetime) {
-                                        Ok(_) => println!("Inserted datetime: {}", datetime),
+                                    let text =
+                                        format!("{} (duration: {:.2}s)", datetime, duration_secs);
+                                    match insert_text_at_cursor(app, &text) {
+                                        Ok(_) => println!(
+                                            "Inserted: {} (captured {} samples, {:.2}s)",
+                                            text,
+                                            audio_samples.len(),
+                                            duration_secs
+                                        ),
                                         Err(e) => eprintln!("Failed to insert text: {}", e),
                                     }
                                 }

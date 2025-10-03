@@ -30,4 +30,6 @@ parking_lot = "0.12"
 enigo = "0.2"
 chrono = "0.4"
 whisper-rs = { version = "0.15", features = ["metal"] }
+rubato = "0.16"
+dasp = "0.11"
 
