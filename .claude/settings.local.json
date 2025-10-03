@@ -8,7 +8,8 @@
       "Bash(npm run tauri:*)",
       "WebSearch",
       "Bash(cat:*)",
-      "Bash(cargo search:*)"
+      "Bash(cargo search:*)",
+      "Read(//Users/g/.cargo/registry/src/**)"
     ],
     "deny": [],
     "ask": []

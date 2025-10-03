@@ -72,6 +72,47 @@ fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// Transcribe audio using Whisper model
+fn transcribe_audio(
+    ctx: &mut WhisperContext,
+    audio_data: &[f32],
+) -> Result<String, Box<dyn std::error::Error>> {
+    if audio_data.is_empty() {
+        return Ok(String::new());
+    }
+
+    println!("Starting transcription of {} samples...", audio_data.len());
+
+    // Create transcription parameters
+    let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
+    params.set_language(Some("en")); // English
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
+
+    // Run transcription
+    let mut state = ctx
+        .create_state()
+        .map_err(|e| format!("Failed to create state: {}", e))?;
+    state
+        .full(params, audio_data)
+        .map_err(|e| format!("Failed to run transcription: {}", e))?;
+
+    // Get the transcribed text from all segments using iterator
+    let mut transcription = String::new();
+
+    for segment in state.as_iter() {
+        if let Ok(text) = segment.to_str() {
+            transcription.push_str(text);
+        }
+    }
+
+    let trimmed = transcription.trim().to_string();
+    println!("Transcription complete: \"{}\"", trimmed);
+
+    Ok(trimmed)
+}
+
 // Load Whisper model (with Metal GPU support)
 fn load_whisper_model(app: &AppHandle) -> Result<WhisperContext, Box<dyn std::error::Error>> {
     let model_path = get_model_path(app);
@@ -366,27 +407,40 @@ pub fn run() {
                                     println!("Option+Space released - recording stopped");
 
                                     // Calculate audio duration in seconds
-                                    let duration_secs = if sample_rate > 0
-                                        && !audio_samples.is_empty()
-                                    {
+                                    let duration_secs = if !audio_samples.is_empty() {
                                         audio_samples.len() as f32 / 16000.0 // Always 16kHz after resampling
                                     } else {
                                         0.0
                                     };
 
-                                    // TODO: Transcribe audio_samples using Whisper
-                                    // For now, insert datetime with duration
-                                    let datetime =
-                                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-                                    let text =
-                                        format!("{} (duration: {:.2}s)", datetime, duration_secs);
+                                    // Transcribe audio using Whisper
+                                    let whisper_state: tauri::State<
+                                        Arc<Mutex<Option<WhisperContext>>>,
+                                    > = app.state();
+                                    let transcription =
+                                        if let Some(ctx) = whisper_state.lock().as_mut() {
+                                            match transcribe_audio(ctx, &audio_samples) {
+                                                Ok(text) => text,
+                                                Err(e) => {
+                                                    eprintln!("Transcription failed: {}", e);
+                                                    String::from("[Transcription failed]")
+                                                }
+                                            }
+                                        } else {
+                                            String::from("[Model not loaded]")
+                                        };
+
+                                    // Insert transcribed text
+                                    let text = if transcription.is_empty() {
+                                        "[No speech detected]".to_string()
+                                    } else if transcription == "[Model not loaded]" || transcription == "[Transcription failed]" {
+                                        transcription
+                                    } else {
+                                        transcription
+                                    };
+
                                     match insert_text_at_cursor(app, &text) {
-                                        Ok(_) => println!(
-                                            "Inserted: {} (captured {} samples, {:.2}s)",
-                                            text,
-                                            audio_samples.len(),
-                                            duration_secs
-                                        ),
+                                        Ok(_) => println!("Inserted transcription ({:.2}s): {}", duration_secs, text),
                                         Err(e) => eprintln!("Failed to insert text: {}", e),
                                     }
                                 }
