@@ -5,7 +5,9 @@
       "Bash(cp:*)",
       "Bash(npx:*)",
       "Bash(npm run tauri build:*)",
-      "Bash(npm run tauri:*)"
+      "Bash(npm run tauri:*)",
+      "WebSearch",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
