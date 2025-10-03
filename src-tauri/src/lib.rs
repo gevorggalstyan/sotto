@@ -467,6 +467,16 @@ async fn switch_model(
     Ok(format!("Model {} loaded successfully", model_name))
 }
 
+// Tauri command to get list of downloaded models
+#[tauri::command]
+fn get_downloaded_models(app: tauri::AppHandle) -> Vec<String> {
+    get_available_models()
+        .into_iter()
+        .filter(|model| model_exists_for(&app, model.name))
+        .map(|model| model.name.to_string())
+        .collect()
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -579,7 +589,7 @@ pub fn run() {
                 .build(),
         )
         .manage(Arc::new(Mutex::new(None::<WhisperContext>))) // Whisper model state
-        .invoke_handler(tauri::generate_handler![greet, switch_model])
+        .invoke_handler(tauri::generate_handler![greet, switch_model, get_downloaded_models])
         .setup(|app| {
             // Hide from dock on macOS
             #[cfg(target_os = "macos")]

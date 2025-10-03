@@ -50,6 +50,35 @@ window.addEventListener("DOMContentLoaded", () => {
   // Handle model selection changes
   const modelSelect = document.getElementById('model-selection') as HTMLSelectElement;
   if (modelSelect) {
+    // Mark downloaded models with ✓
+    async function updateModelIndicators() {
+      try {
+        // @ts-ignore - Tauri command
+        const downloadedModels = await window.__TAURI__.core.invoke('get_downloaded_models') as string[];
+
+        // Update all options
+        Array.from(modelSelect.options).forEach(option => {
+          const modelName = option.value;
+          const isDownloaded = downloadedModels.includes(modelName);
+
+          // Remove existing indicators
+          option.text = option.text.replace(/^✓ /, '').replace(/^\[Download\] /, '');
+
+          // Add appropriate indicator
+          if (isDownloaded) {
+            option.text = `✓ ${option.text}`;
+          } else {
+            option.text = `[Download] ${option.text}`;
+          }
+        });
+      } catch (error) {
+        console.error('Failed to get downloaded models:', error);
+      }
+    }
+
+    // Update indicators on load
+    updateModelIndicators();
+
     modelSelect.addEventListener('change', async (e) => {
       const target = e.target as HTMLSelectElement;
       const modelName = target.value;
@@ -61,6 +90,7 @@ window.addEventListener("DOMContentLoaded", () => {
         const result = await window.__TAURI__.core.invoke('switch_model', { modelName });
         console.log(result);
         localStorage.setItem('selected_model', modelName);
+        await updateModelIndicators(); // Refresh indicators after switch
         alert(`Successfully switched to ${modelName} model!`);
       } catch (error) {
         console.error('Failed to switch model:', error);
