@@ -47,15 +47,45 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Handle settings changes (save to localStorage for persistence)
+  // Handle model selection changes
+  const modelSelect = document.getElementById('model-selection') as HTMLSelectElement;
+  if (modelSelect) {
+    modelSelect.addEventListener('change', async (e) => {
+      const target = e.target as HTMLSelectElement;
+      const modelName = target.value;
+
+      console.log(`Switching to model: ${modelName}`);
+
+      try {
+        // @ts-ignore - Tauri command
+        const result = await window.__TAURI__.core.invoke('switch_model', { modelName });
+        console.log(result);
+        localStorage.setItem('selected_model', modelName);
+        alert(`Successfully switched to ${modelName} model!`);
+      } catch (error) {
+        console.error('Failed to switch model:', error);
+        alert(`Failed to switch model: ${error}`);
+      }
+    });
+
+    // Load saved model selection
+    const savedModel = localStorage.getItem('selected_model');
+    if (savedModel) {
+      modelSelect.value = savedModel;
+    }
+  }
+
+  // Handle other settings changes (save to localStorage for persistence)
   document.querySelectorAll('.toggle, .select-input').forEach(input => {
+    if (input.id === 'model-selection') return; // Skip model selection, handled above
+
     input.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement | HTMLSelectElement;
       const settingId = target.id;
-      const value = target instanceof HTMLInputElement && target.type === 'checkbox' 
-        ? target.checked 
+      const value = target instanceof HTMLInputElement && target.type === 'checkbox'
+        ? target.checked
         : target.value;
-      
+
       localStorage.setItem(`setting_${settingId}`, JSON.stringify(value));
       console.log(`Setting saved: ${settingId} = ${value}`);
     });

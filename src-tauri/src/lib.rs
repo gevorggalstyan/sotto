@@ -19,37 +19,119 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
 
-// Whisper model filename
-const WHISPER_MODEL_NAME: &str = "ggml-large-v3-turbo.bin";
+// Whisper model information
+#[derive(Clone)]
+struct ModelInfo {
+    name: &'static str,
+    filename: &'static str,
+    url: &'static str,
+    size_mb: u32,
+}
 
-// Get the model file path in app data directory
-fn get_model_path(app: &AppHandle) -> PathBuf {
+// Available Whisper models - all models from whisper.cpp repository with correct sizes
+fn get_available_models() -> Vec<ModelInfo> {
+    vec![
+        // Tiny models
+        ModelInfo { name: "tiny", filename: "ggml-tiny.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin", size_mb: 75 },
+        ModelInfo { name: "tiny.en", filename: "ggml-tiny.en.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin", size_mb: 75 },
+        ModelInfo { name: "tiny-q5_1", filename: "ggml-tiny-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin", size_mb: 31 },
+        ModelInfo { name: "tiny.en-q5_1", filename: "ggml-tiny.en-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q5_1.bin", size_mb: 31 },
+        ModelInfo { name: "tiny-q8_0", filename: "ggml-tiny-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q8_0.bin", size_mb: 42 },
+        ModelInfo { name: "tiny.en-q8_0", filename: "ggml-tiny.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en-q8_0.bin", size_mb: 42 },
+
+        // Base models
+        ModelInfo { name: "base", filename: "ggml-base.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin", size_mb: 142 },
+        ModelInfo { name: "base.en", filename: "ggml-base.en.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin", size_mb: 142 },
+        ModelInfo { name: "base-q5_1", filename: "ggml-base-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin", size_mb: 57 },
+        ModelInfo { name: "base.en-q5_1", filename: "ggml-base.en-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin", size_mb: 57 },
+        ModelInfo { name: "base-q8_0", filename: "ggml-base-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q8_0.bin", size_mb: 78 },
+        ModelInfo { name: "base.en-q8_0", filename: "ggml-base.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q8_0.bin", size_mb: 78 },
+
+        // Small models
+        ModelInfo { name: "small", filename: "ggml-small.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin", size_mb: 466 },
+        ModelInfo { name: "small.en", filename: "ggml-small.en.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin", size_mb: 466 },
+        ModelInfo { name: "small-q5_1", filename: "ggml-small-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin", size_mb: 181 },
+        ModelInfo { name: "small.en-q5_1", filename: "ggml-small.en-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin", size_mb: 181 },
+        ModelInfo { name: "small-q8_0", filename: "ggml-small-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q8_0.bin", size_mb: 252 },
+        ModelInfo { name: "small.en-q8_0", filename: "ggml-small.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q8_0.bin", size_mb: 252 },
+        ModelInfo { name: "small.en-tdrz", filename: "ggml-small.en-tdrz.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-tdrz.bin", size_mb: 465 },
+
+        // Medium models
+        ModelInfo { name: "medium", filename: "ggml-medium.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin", size_mb: 1536 },
+        ModelInfo { name: "medium.en", filename: "ggml-medium.en.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin", size_mb: 1536 },
+        ModelInfo { name: "medium-q5_0", filename: "ggml-medium-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q5_0.bin", size_mb: 514 },
+        ModelInfo { name: "medium.en-q5_0", filename: "ggml-medium.en-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q5_0.bin", size_mb: 514 },
+        ModelInfo { name: "medium-q8_0", filename: "ggml-medium-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium-q8_0.bin", size_mb: 785 },
+        ModelInfo { name: "medium.en-q8_0", filename: "ggml-medium.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q8_0.bin", size_mb: 785 },
+
+        // Large models
+        ModelInfo { name: "large-v1", filename: "ggml-large-v1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v1.bin", size_mb: 2965 },
+        ModelInfo { name: "large-v2", filename: "ggml-large-v2.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2.bin", size_mb: 2965 },
+        ModelInfo { name: "large-v2-q5_0", filename: "ggml-large-v2-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2-q5_0.bin", size_mb: 1126 },
+        ModelInfo { name: "large-v2-q8_0", filename: "ggml-large-v2-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2-q8_0.bin", size_mb: 1536 },
+        ModelInfo { name: "large-v3", filename: "ggml-large-v3.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin", size_mb: 2965 },
+        ModelInfo { name: "large-v3-q5_0", filename: "ggml-large-v3-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin", size_mb: 1126 },
+        ModelInfo { name: "large-v3-turbo", filename: "ggml-large-v3-turbo.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin", size_mb: 1536 },
+        ModelInfo { name: "large-v3-turbo-q5_0", filename: "ggml-large-v3-turbo-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin", size_mb: 547 },
+        ModelInfo { name: "large-v3-turbo-q8_0", filename: "ggml-large-v3-turbo-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q8_0.bin", size_mb: 834 },
+    ]
+}
+
+// Get default model name
+const DEFAULT_MODEL: &str = "large-v3-turbo";
+
+// Get the model file path for a specific model
+fn get_model_path_for(app: &AppHandle, model_name: &str) -> PathBuf {
     let app_data_dir = app
         .path()
         .app_data_dir()
         .expect("Failed to get app data dir");
-    std::fs::create_dir_all(&app_data_dir).ok();
-    app_data_dir.join("models").join(WHISPER_MODEL_NAME)
+    let models_dir = app_data_dir.join("models");
+    std::fs::create_dir_all(&models_dir).ok();
+
+    // Find the model info
+    let model_info = get_available_models()
+        .into_iter()
+        .find(|m| m.name == model_name)
+        .expect("Unknown model name");
+
+    models_dir.join(model_info.filename)
 }
 
-// Check if model exists
+// Get default model path (for backward compatibility)
+fn get_model_path(app: &AppHandle) -> PathBuf {
+    get_model_path_for(app, DEFAULT_MODEL)
+}
+
+// Check if a specific model exists
+fn model_exists_for(app: &AppHandle, model_name: &str) -> bool {
+    get_model_path_for(app, model_name).exists()
+}
+
+// Check if default model exists
 fn model_exists(app: &AppHandle) -> bool {
-    get_model_path(app).exists()
+    model_exists_for(app, DEFAULT_MODEL)
 }
 
-// Download Whisper model from HuggingFace
-fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let model_path = get_model_path(app);
+// Download a specific Whisper model from HuggingFace
+fn download_model_by_name(app: &AppHandle, model_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Find the model info
+    let model_info = get_available_models()
+        .into_iter()
+        .find(|m| m.name == model_name)
+        .ok_or("Unknown model name")?;
+
+    let model_path = get_model_path_for(app, model_name);
 
     // Create models directory if it doesn't exist
     if let Some(parent) = model_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
 
-    println!("Downloading Whisper large-v3-turbo model (~1.5GB)...");
+    println!("Downloading Whisper {} model (~{}MB)...", model_info.name, model_info.size_mb);
 
     // Download from HuggingFace
-    let url = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin";
+    let url = model_info.url;
 
     let mut response = reqwest::blocking::get(url)?;
 
@@ -70,6 +152,11 @@ fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Model downloaded successfully to: {:?}", model_path);
     Ok(())
+}
+
+// Download default model (for backward compatibility)
+fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    download_model_by_name(app, DEFAULT_MODEL)
 }
 
 // Transcribe audio using Whisper model
@@ -349,6 +436,37 @@ fn insert_text_at_cursor(app: &AppHandle, text: &str) -> Result<(), Box<dyn std:
     Ok(())
 }
 
+// Tauri command to switch Whisper model
+#[tauri::command]
+async fn switch_model(
+    app: tauri::AppHandle,
+    model_name: String,
+) -> Result<String, String> {
+    // Check if model exists, download if not
+    if !model_exists_for(&app, &model_name) {
+        println!("Model {} not found, downloading...", model_name);
+        download_model_by_name(&app, &model_name)
+            .map_err(|e| format!("Failed to download model: {}", e))?;
+    }
+
+    // Load the new model
+    let model_path = get_model_path_for(&app, &model_name);
+    println!("Loading model from: {:?}", model_path);
+
+    let params = WhisperContextParameters::default();
+    let ctx = WhisperContext::new_with_params(
+        model_path.to_str().ok_or("Invalid model path")?,
+        params
+    ).map_err(|e| format!("Failed to load model: {}", e))?;
+
+    // Replace the current model in app state
+    let whisper_state: tauri::State<Arc<Mutex<Option<WhisperContext>>>> = app.state();
+    *whisper_state.lock() = Some(ctx);
+
+    println!("Successfully switched to model: {}", model_name);
+    Ok(format!("Model {} loaded successfully", model_name))
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -461,7 +579,7 @@ pub fn run() {
                 .build(),
         )
         .manage(Arc::new(Mutex::new(None::<WhisperContext>))) // Whisper model state
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![greet, switch_model])
         .setup(|app| {
             // Hide from dock on macOS
             #[cfg(target_os = "macos")]

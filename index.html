@@ -43,10 +43,50 @@
                   <span class="setting-description">Choose model size (larger = more accurate, slower)</span>
                 </div>
                 <select id="model-selection" class="select-input">
-                  <option value="base">Base (140MB) - Fast</option>
-                  <option value="small">Small (460MB) - Balanced</option>
-                  <option value="medium">Medium (1.5GB) - Accurate</option>
-                  <option value="large-v3-turbo" selected>Large v3 Turbo (1.6GB) - Best</option>
+                  <optgroup label="Tiny Models (Ultra Fast)">
+                    <option value="tiny">Tiny (75MB)</option>
+                    <option value="tiny.en">Tiny English (75MB)</option>
+                    <option value="tiny-q5_1">Tiny Q5 (31MB)</option>
+                    <option value="tiny.en-q5_1">Tiny English Q5 (31MB)</option>
+                    <option value="tiny-q8_0">Tiny Q8 (42MB)</option>
+                    <option value="tiny.en-q8_0">Tiny English Q8 (42MB)</option>
+                  </optgroup>
+                  <optgroup label="Base Models (Fast)">
+                    <option value="base">Base (142MB)</option>
+                    <option value="base.en">Base English (142MB)</option>
+                    <option value="base-q5_1">Base Q5 (57MB)</option>
+                    <option value="base.en-q5_1">Base English Q5 (57MB)</option>
+                    <option value="base-q8_0">Base Q8 (78MB)</option>
+                    <option value="base.en-q8_0">Base English Q8 (78MB)</option>
+                  </optgroup>
+                  <optgroup label="Small Models (Balanced)">
+                    <option value="small">Small (466MB)</option>
+                    <option value="small.en">Small English (466MB)</option>
+                    <option value="small.en-tdrz">Small English TDRZ (465MB)</option>
+                    <option value="small-q5_1">Small Q5 (181MB)</option>
+                    <option value="small.en-q5_1">Small English Q5 (181MB)</option>
+                    <option value="small-q8_0">Small Q8 (252MB)</option>
+                    <option value="small.en-q8_0">Small English Q8 (252MB)</option>
+                  </optgroup>
+                  <optgroup label="Medium Models (Accurate)">
+                    <option value="medium">Medium (1.5GB)</option>
+                    <option value="medium.en">Medium English (1.5GB)</option>
+                    <option value="medium-q5_0">Medium Q5 (514MB)</option>
+                    <option value="medium.en-q5_0">Medium English Q5 (514MB)</option>
+                    <option value="medium-q8_0">Medium Q8 (785MB)</option>
+                    <option value="medium.en-q8_0">Medium English Q8 (785MB)</option>
+                  </optgroup>
+                  <optgroup label="Large Models (Best Quality)">
+                    <option value="large-v3-turbo" selected>Large v3 Turbo (1.5GB) ⭐ Recommended</option>
+                    <option value="large-v3-turbo-q5_0">Large v3 Turbo Q5 (547MB)</option>
+                    <option value="large-v3-turbo-q8_0">Large v3 Turbo Q8 (834MB)</option>
+                    <option value="large-v3">Large v3 (3GB)</option>
+                    <option value="large-v3-q5_0">Large v3 Q5 (1.1GB)</option>
+                    <option value="large-v2">Large v2 (3GB)</option>
+                    <option value="large-v2-q5_0">Large v2 Q5 (1.1GB)</option>
+                    <option value="large-v2-q8_0">Large v2 Q8 (1.5GB)</option>
+                    <option value="large-v1">Large v1 (3GB)</option>
+                  </optgroup>
                 </select>
               </div>
             </div>
