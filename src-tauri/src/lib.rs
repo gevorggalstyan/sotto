@@ -75,31 +75,38 @@ where
     Ok(stream)
 }
 
-// Insert text at cursor position by using clipboard + Cmd+V
+// Insert text at cursor position using clipboard save/restore + paste
 fn insert_text_at_cursor(app: &AppHandle, text: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Write text to clipboard
+    // Save current clipboard content
+    let original_clipboard = app.clipboard().read_text().ok();
+
+    // Write our text to clipboard
     app.clipboard().write_text(text)?;
 
     // Wait for clipboard to update and for user to release modifier keys
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Simulate Cmd+V to paste
-    // Note: User should have already released Space, but might still be holding Option
-    // We need to ensure Option is released before simulating Cmd+V
-    let mut enigo = Enigo::new(&Settings::default())?;
-
     // Release Option key if it's still held (to avoid Cmd+Option+V)
+    let mut enigo = Enigo::new(&Settings::default())?;
     enigo.key(Key::Alt, enigo::Direction::Release)?;
 
     // Small delay after releasing Option
     std::thread::sleep(std::time::Duration::from_millis(50));
 
-    // Now simulate Cmd+V
+    // Simulate Cmd+V to paste
     enigo.key(Key::Meta, enigo::Direction::Press)?;
     enigo.key(Key::Unicode('v'), enigo::Direction::Click)?;
     enigo.key(Key::Meta, enigo::Direction::Release)?;
 
-    println!("Simulated Cmd+V paste");
+    // Wait a bit for paste to complete
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Restore original clipboard content
+    if let Some(original) = original_clipboard {
+        let _ = app.clipboard().write_text(original);
+    }
+
+    println!("Inserted text via clipboard (restored original)");
 
     Ok(())
 }
