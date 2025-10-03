@@ -21,17 +21,9 @@
             <i data-lucide="settings" class="icon"></i>
             General
           </button>
-          <button class="nav-item" data-tab="audio">
-            <i data-lucide="mic" class="icon"></i>
-            Audio
-          </button>
-          <button class="nav-item" data-tab="shortcuts">
-            <i data-lucide="keyboard" class="icon"></i>
-            Shortcuts
-          </button>
-          <button class="nav-item" data-tab="privacy">
-            <i data-lucide="lock" class="icon"></i>
-            Privacy
+          <button class="nav-item" data-tab="troubleshooting">
+            <i data-lucide="alert-circle" class="icon"></i>
+            Troubleshooting
           </button>
           <button class="nav-item" data-tab="about">
             <i data-lucide="info" class="icon"></i>
@@ -43,145 +35,80 @@
           <!-- General Settings -->
           <div class="tab-content active" id="general">
             <h2>General</h2>
-            
+
             <div class="setting-group">
               <div class="setting-item">
                 <div class="setting-label">
-                  <label for="launch-startup">Launch at startup</label>
-                  <span class="setting-description">Start Sotto automatically when you log in</span>
+                  <label for="model-selection">Whisper Model</label>
+                  <span class="setting-description">Choose model size (larger = more accurate, slower)</span>
                 </div>
-                <input type="checkbox" id="launch-startup" class="toggle">
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="show-notifications">Show notifications</label>
-                  <span class="setting-description">Display notifications for transcription events</span>
-                </div>
-                <input type="checkbox" id="show-notifications" class="toggle" checked>
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="auto-copy">Auto-copy to clipboard</label>
-                  <span class="setting-description">Automatically copy transcription results to clipboard</span>
-                </div>
-                <input type="checkbox" id="auto-copy" class="toggle" checked>
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="language">Default language</label>
-                  <span class="setting-description">Primary language for transcription</span>
-                </div>
-                <select id="language" class="select-input">
-                  <option value="en">English</option>
-                  <option value="es">Spanish</option>
-                  <option value="fr">French</option>
-                  <option value="de">German</option>
-                  <option value="ja">Japanese</option>
-                  <option value="zh">Chinese</option>
+                <select id="model-selection" class="select-input">
+                  <option value="base">Base (140MB) - Fast</option>
+                  <option value="small">Small (460MB) - Balanced</option>
+                  <option value="medium">Medium (1.5GB) - Accurate</option>
+                  <option value="large-v3-turbo" selected>Large v3 Turbo (1.6GB) - Best</option>
                 </select>
               </div>
             </div>
           </div>
 
-          <!-- Audio Settings -->
-          <div class="tab-content" id="audio">
-            <h2>Audio</h2>
-            
-            <div class="setting-group">
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="input-device">Input device</label>
-                  <span class="setting-description">Select your microphone or audio input</span>
-                </div>
-                <select id="input-device" class="select-input">
-                  <option value="default">Default</option>
-                  <option value="built-in">Built-in Microphone</option>
-                </select>
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="sample-rate">Sample rate</label>
-                  <span class="setting-description">Audio quality for recording</span>
-                </div>
-                <select id="sample-rate" class="select-input">
-                  <option value="16000">16 kHz</option>
-                  <option value="44100">44.1 kHz</option>
-                  <option value="48000" selected>48 kHz</option>
-                </select>
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="noise-reduction">Noise reduction</label>
-                  <span class="setting-description">Reduce background noise in recordings</span>
-                </div>
-                <input type="checkbox" id="noise-reduction" class="toggle" checked>
-              </div>
-            </div>
-          </div>
-
-          <!-- Shortcuts Settings -->
-          <div class="tab-content" id="shortcuts">
-            <h2>Keyboard Shortcuts</h2>
+          <!-- Troubleshooting -->
+          <div class="tab-content" id="troubleshooting">
+            <h2>Troubleshooting</h2>
 
             <div class="setting-group">
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label>Start/Stop recording</label>
-                  <span class="setting-description">Hold to record, release to stop</span>
-                </div>
-                <kbd class="shortcut">⌥ + Space</kbd>
+              <div class="troubleshooting-section">
+                <h3><i data-lucide="mic" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 8px;"></i>Microphone Access Issues</h3>
+                <p><strong>Symptoms:</strong> Recording doesn't start, no orange dot in menu bar, mic icon stays gray</p>
+                <p><strong>Solution:</strong></p>
+                <ol>
+                  <li>Open System Settings → Privacy & Security → Microphone</li>
+                  <li>Find "Sotto" in the list and enable it</li>
+                  <li>Restart Sotto</li>
+                  <li>Try recording again with Option + Space</li>
+                </ol>
               </div>
 
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label>Open settings</label>
-                  <span class="setting-description">Show this settings window</span>
-                </div>
-                <kbd class="shortcut">⌘ + ,</kbd>
+              <div class="troubleshooting-section">
+                <h3><i data-lucide="keyboard" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 8px;"></i>Accessibility Permission Issues</h3>
+                <p><strong>Symptoms:</strong> Text doesn't insert at cursor, nothing happens when releasing hotkey</p>
+                <p><strong>Solution:</strong></p>
+                <ol>
+                  <li>Open System Settings → Privacy & Security → Accessibility</li>
+                  <li>Find "Sotto" in the list and enable it</li>
+                  <li>Restart Sotto</li>
+                  <li>Try transcribing again</li>
+                </ol>
               </div>
 
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label>Show/Hide window</label>
-                  <span class="setting-description">Toggle window visibility</span>
-                </div>
-                <kbd class="shortcut">⌘ + Shift + S</kbd>
-              </div>
-            </div>
-          </div>
-
-          <!-- Privacy Settings -->
-          <div class="tab-content" id="privacy">
-            <h2>Privacy & Security</h2>
-            
-            <div class="setting-group">
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="save-history">Save transcription history</label>
-                  <span class="setting-description">Keep a local history of your transcriptions</span>
-                </div>
-                <input type="checkbox" id="save-history" class="toggle" checked>
+              <div class="troubleshooting-section">
+                <h3><i data-lucide="download" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 8px;"></i>Model Download Issues</h3>
+                <p><strong>Symptoms:</strong> "[Model not loaded]" appears, transcription doesn't work</p>
+                <p><strong>What happens:</strong></p>
+                <ul>
+                  <li>On first launch, Sotto automatically downloads the Whisper model (~1.5GB) in the background</li>
+                  <li>The app remains functional while downloading</li>
+                  <li>Once complete, the model loads automatically</li>
+                </ul>
+                <p><strong>If download fails:</strong></p>
+                <ol>
+                  <li>Check your internet connection</li>
+                  <li>Restart Sotto to retry the download</li>
+                  <li>Check model location: <code>~/Library/Application Support/am.galstyan.sotto/models/</code></li>
+                  <li>If needed, manually download <code>ggml-large-v3-turbo.bin</code> from <a href="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin" target="_blank">HuggingFace</a> and place it in the models folder</li>
+                </ol>
               </div>
 
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label for="local-processing">Process locally</label>
-                  <span class="setting-description">Keep all transcription on-device (no cloud)</span>
-                </div>
-                <input type="checkbox" id="local-processing" class="toggle" checked>
-              </div>
-
-              <div class="setting-item">
-                <div class="setting-label">
-                  <label>Clear history</label>
-                  <span class="setting-description">Delete all saved transcriptions</span>
-                </div>
-                <button class="danger-button">Clear All Data</button>
+              <div class="troubleshooting-section">
+                <h3><i data-lucide="zap" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 8px;"></i>Performance Issues</h3>
+                <p><strong>Symptoms:</strong> Transcription takes too long</p>
+                <p><strong>Tips:</strong></p>
+                <ul>
+                  <li>Shorter recordings transcribe faster</li>
+                  <li>First transcription after launch may be slower (model warmup)</li>
+                  <li>Large v3 Turbo is optimized for M1/M2/M3 Macs with Metal GPU</li>
+                  <li>Consider switching to a smaller model in General settings (when implemented)</li>
+                </ul>
               </div>
             </div>
           </div>
@@ -192,15 +119,17 @@
             
             <div class="about-content">
               <div class="about-icon">
-                <i data-lucide="mic-2"></i>
+                <img src="../src-tauri/icons/Sotto Logo.png" alt="Sotto Logo" width="72" height="72">
               </div>
               <h3>Sotto</h3>
-              <p class="version">Version 1.0.0</p>
+              <p class="version">Version 0.1.0</p>
               <p class="about-description">
-                Open-source voice transcription app for macOS.
-                <br>Built with Tauri and TypeScript.
+                Voice transcription for macOS.
+                <br><br>
+                <strong>Privacy:</strong> All processing happens locally on your device.
+                No data is sent to the cloud.
               </p>
-              
+
               <div class="about-links">
                 <a href="https://github.com/gevorggalstyan/sotto" class="link-button" target="_blank">
                   View on GitHub
@@ -211,7 +140,7 @@
               </div>
 
               <div class="about-footer">
-                <p>© 2025 Sotto Contributors</p>
+                <p>© 2025 Gevorg Galstyan</p>
                 <p class="license">Released under MIT License</p>
               </div>
             </div>

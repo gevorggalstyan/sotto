@@ -524,3 +524,74 @@ body {
     background: #58585a;
   }
 }
+
+/* Troubleshooting Sections */
+.troubleshooting-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background-color: #fafafa;
+  border-radius: 10px;
+}
+
+.troubleshooting-section h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #1d1d1f;
+}
+
+.troubleshooting-section p {
+  margin-bottom: 8px;
+  color: #1d1d1f;
+  line-height: 1.6;
+}
+
+.troubleshooting-section ol,
+.troubleshooting-section ul {
+  margin-left: 20px;
+  margin-top: 8px;
+  color: #1d1d1f;
+}
+
+.troubleshooting-section li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.troubleshooting-section code {
+  background-color: #e5e5e7;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+}
+
+.troubleshooting-section a {
+  color: #007aff;
+  text-decoration: none;
+}
+
+.troubleshooting-section a:hover {
+  text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+  .troubleshooting-section {
+    background-color: #2c2c2e;
+  }
+
+  .troubleshooting-section h3,
+  .troubleshooting-section p,
+  .troubleshooting-section li {
+    color: #f5f5f7;
+  }
+
+  .troubleshooting-section code {
+    background-color: #48484a;
+    color: #f5f5f7;
+  }
+
+  .troubleshooting-section a {
+    color: #0a84ff;
+  }
+}
