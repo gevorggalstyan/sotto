@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sips:*)",
+      "Bash(cp:*)",
+      "Bash(npx:*)",
+      "Bash(npm run tauri build:*)",
+      "Bash(npm run tauri:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

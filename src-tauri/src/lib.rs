@@ -1,4 +1,5 @@
-use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder};
+use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image};
+use image::GenericImageView;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -23,9 +24,17 @@ pub fn run() {
             // Build menu
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
             
-            // Create tray icon with icon from bundle
+            // Load tray icon from embedded PNG file
+            let icon_bytes = include_bytes!("../icons/Sotto Logo.png");
+            let icon_image = image::load_from_memory(icon_bytes)
+                .map_err(|e| tauri::Error::AssetNotFound(format!("Failed to load icon: {}", e)))?;
+            let (width, height) = icon_image.dimensions();
+            let rgba = icon_image.to_rgba8().into_raw();
+            let icon = Image::new_owned(rgba, width, height);
+
+            // Create tray icon
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
