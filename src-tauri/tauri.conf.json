@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "sotto",
+        "title": "Sotto",
         "width": 800,
         "height": 600
       }
