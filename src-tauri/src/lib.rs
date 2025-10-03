@@ -1,7 +1,8 @@
-use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image};
+use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image, State};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use image::GenericImageView;
-use std::sync::{Arc, Mutex};
+use parking_lot::Mutex;
+use std::sync::Arc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 // Tray icon ID for accessing tray from shortcut handler
@@ -12,9 +13,10 @@ struct AudioRecorder {
     stream: Option<cpal::Stream>,
 }
 
-// Safety: We need to implement Send manually since cpal::Stream isn't Send by default
-// but we're only accessing it from a single thread (the main thread) via Arc<Mutex>
+// Safety: AudioRecorder is only accessed from the main thread via parking_lot::Mutex
+// parking_lot doesn't require Send, but Tauri State does, so we implement it manually
 unsafe impl Send for AudioRecorder {}
+unsafe impl Sync for AudioRecorder {}
 
 impl AudioRecorder {
     fn new() -> Self {
@@ -94,7 +96,7 @@ pub fn run() {
     let default_icon_clone = default_icon.clone();
     let active_icon_clone = active_icon.clone();
 
-    // Create audio recorder state wrapped in Arc<Mutex> for thread-safe access
+    // Create audio recorder wrapped in Arc<Mutex>
     let audio_recorder = Arc::new(Mutex::new(AudioRecorder::new()));
     let audio_recorder_clone = audio_recorder.clone();
 
@@ -109,29 +111,25 @@ pub fn run() {
                             match event.state {
                                 ShortcutState::Pressed => {
                                     // Switch to active icon
-                                    if let Ok(icon) = active_icon_clone.lock() {
-                                        let _ = tray.set_icon(Some(icon.clone()));
-                                    }
+                                    let icon = active_icon_clone.lock();
+                                    let _ = tray.set_icon(Some(icon.clone()));
 
                                     // Start audio capture
-                                    if let Ok(mut recorder) = audio_recorder_clone.lock() {
-                                        match recorder.start() {
-                                            Ok(_) => println!("Option+Space pressed - recording started"),
-                                            Err(e) => eprintln!("Failed to start audio capture: {}", e),
-                                        }
+                                    let mut recorder = audio_recorder_clone.lock();
+                                    match recorder.start() {
+                                        Ok(_) => println!("Option+Space pressed - recording started"),
+                                        Err(e) => eprintln!("Failed to start audio capture: {}", e),
                                     }
                                 }
                                 ShortcutState::Released => {
                                     // Switch back to default icon
-                                    if let Ok(icon) = default_icon_clone.lock() {
-                                        let _ = tray.set_icon(Some(icon.clone()));
-                                    }
+                                    let icon = default_icon_clone.lock();
+                                    let _ = tray.set_icon(Some(icon.clone()));
 
                                     // Stop audio capture
-                                    if let Ok(mut recorder) = audio_recorder_clone.lock() {
-                                        recorder.stop();
-                                        println!("Option+Space released - recording stopped");
-                                    }
+                                    let mut recorder = audio_recorder_clone.lock();
+                                    recorder.stop();
+                                    println!("Option+Space released - recording stopped");
                                 }
                             }
                         }
