@@ -81,14 +81,26 @@ fn transcribe_audio(
         return Ok(String::new());
     }
 
+    // Skip transcription for very short audio (< 0.3s at 16kHz)
+    if audio_data.len() < 4800 {
+        println!("Audio too short ({} samples), skipping transcription", audio_data.len());
+        return Ok(String::new());
+    }
+
     println!("Starting transcription of {} samples...", audio_data.len());
 
-    // Create transcription parameters
+    // Create transcription parameters optimized for speed
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("en")); // English
+    params.set_language(Some("en")); // English - skips auto-detection
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
+    // Use half of available CPU threads (leave room for other processes)
+    let n_threads = (std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4) / 2)
+        .max(1);
+    params.set_n_threads(n_threads as i32);
 
     // Run transcription
     let mut state = ctx
@@ -430,18 +442,16 @@ pub fn run() {
                                             String::from("[Model not loaded]")
                                         };
 
-                                    // Insert transcribed text
-                                    let text = if transcription.is_empty() {
-                                        "[No speech detected]".to_string()
-                                    } else if transcription == "[Model not loaded]" || transcription == "[Transcription failed]" {
-                                        transcription
+                                    // Insert transcribed text only if not empty
+                                    if !transcription.is_empty()
+                                        && transcription != "[Model not loaded]"
+                                        && transcription != "[Transcription failed]" {
+                                        match insert_text_at_cursor(app, &transcription) {
+                                            Ok(_) => println!("Inserted transcription ({:.2}s): {}", duration_secs, transcription),
+                                            Err(e) => eprintln!("Failed to insert text: {}", e),
+                                        }
                                     } else {
-                                        transcription
-                                    };
-
-                                    match insert_text_at_cursor(app, &text) {
-                                        Ok(_) => println!("Inserted transcription ({:.2}s): {}", duration_secs, text),
-                                        Err(e) => eprintln!("Failed to insert text: {}", e),
+                                        println!("No text to insert ({})", transcription);
                                     }
                                 }
                             }
