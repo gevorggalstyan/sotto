@@ -1,9 +1,12 @@
-use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image, State};
+use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image, State, AppHandle};
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+use tauri_plugin_clipboard_manager::ClipboardExt;
 use image::GenericImageView;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use enigo::{Enigo, Key, Keyboard, Settings};
+use chrono::Local;
 
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
@@ -72,6 +75,35 @@ where
     Ok(stream)
 }
 
+// Insert text at cursor position by using clipboard + Cmd+V
+fn insert_text_at_cursor(app: &AppHandle, text: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Write text to clipboard
+    app.clipboard().write_text(text)?;
+
+    // Wait for clipboard to update and for user to release modifier keys
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Simulate Cmd+V to paste
+    // Note: User should have already released Space, but might still be holding Option
+    // We need to ensure Option is released before simulating Cmd+V
+    let mut enigo = Enigo::new(&Settings::default())?;
+
+    // Release Option key if it's still held (to avoid Cmd+Option+V)
+    enigo.key(Key::Alt, enigo::Direction::Release)?;
+
+    // Small delay after releasing Option
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Now simulate Cmd+V
+    enigo.key(Key::Meta, enigo::Direction::Press)?;
+    enigo.key(Key::Unicode('v'), enigo::Direction::Click)?;
+    enigo.key(Key::Meta, enigo::Direction::Release)?;
+
+    println!("Simulated Cmd+V paste");
+
+    Ok(())
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -102,6 +134,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["alt+space"]).expect("Failed to register shortcut")
@@ -130,6 +163,13 @@ pub fn run() {
                                     let mut recorder = audio_recorder_clone.lock();
                                     recorder.stop();
                                     println!("Option+Space released - recording stopped");
+
+                                    // Insert current datetime at cursor position
+                                    let datetime = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                                    match insert_text_at_cursor(app, &datetime) {
+                                        Ok(_) => println!("Inserted datetime: {}", datetime),
+                                        Err(e) => eprintln!("Failed to insert text: {}", e),
+                                    }
                                 }
                             }
                         }
