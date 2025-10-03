@@ -1,12 +1,17 @@
-use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image, State, AppHandle};
-use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
-use tauri_plugin_clipboard_manager::ClipboardExt;
+use chrono::Local;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use enigo::{Enigo, Key, Keyboard, Settings};
 use image::GenericImageView;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use enigo::{Enigo, Key, Keyboard, Settings};
-use chrono::Local;
+use tauri::{
+    image::Image,
+    menu::{Menu, MenuItem},
+    tray::TrayIconBuilder,
+    AppHandle, Manager, State,
+};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
@@ -30,7 +35,8 @@ impl AudioRecorder {
         if self.stream.is_none() {
             // Get the default audio host and input device
             let host = cpal::default_host();
-            let device = host.default_input_device()
+            let device = host
+                .default_input_device()
                 .ok_or("No input device available")?;
 
             let config = device.default_input_config()?;
@@ -59,7 +65,10 @@ impl AudioRecorder {
     }
 }
 
-fn build_input_stream<T>(device: &cpal::Device, config: &cpal::StreamConfig) -> Result<cpal::Stream, Box<dyn std::error::Error>>
+fn build_input_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+) -> Result<cpal::Stream, Box<dyn std::error::Error>>
 where
     T: cpal::Sample + cpal::SizedSample,
 {
@@ -127,10 +136,15 @@ pub fn run() {
     let default_icon = Arc::new(Mutex::new(Image::new_owned(rgba, width, height)));
 
     let active_icon_bytes = include_bytes!("../icons/Sotto Logo Active.png");
-    let active_icon_image = image::load_from_memory(active_icon_bytes).expect("Failed to load active icon");
+    let active_icon_image =
+        image::load_from_memory(active_icon_bytes).expect("Failed to load active icon");
     let (active_width, active_height) = active_icon_image.dimensions();
     let active_rgba = active_icon_image.to_rgba8().into_raw();
-    let active_icon = Arc::new(Mutex::new(Image::new_owned(active_rgba, active_width, active_height)));
+    let active_icon = Arc::new(Mutex::new(Image::new_owned(
+        active_rgba,
+        active_width,
+        active_height,
+    )));
 
     let default_icon_clone = default_icon.clone();
     let active_icon_clone = active_icon.clone();
@@ -144,7 +158,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["alt+space"]).expect("Failed to register shortcut")
+                .with_shortcuts(["alt+space"])
+                .expect("Failed to register shortcut")
                 .with_handler(move |app, shortcut, event| {
                     if shortcut.matches(Modifiers::ALT, Code::Space) {
                         if let Some(tray) = app.tray_by_id(TRAY_ID) {
@@ -157,7 +172,9 @@ pub fn run() {
                                     // Start audio capture
                                     let mut recorder = audio_recorder_clone.lock();
                                     match recorder.start() {
-                                        Ok(_) => println!("Option+Space pressed - recording started"),
+                                        Ok(_) => {
+                                            println!("Option+Space pressed - recording started")
+                                        }
                                         Err(e) => eprintln!("Failed to start audio capture: {}", e),
                                     }
                                 }
@@ -172,7 +189,8 @@ pub fn run() {
                                     println!("Option+Space released - recording stopped");
 
                                     // Insert current datetime at cursor position
-                                    let datetime = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+                                    let datetime =
+                                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
                                     match insert_text_at_cursor(app, &datetime) {
                                         Ok(_) => println!("Inserted datetime: {}", datetime),
                                         Err(e) => eprintln!("Failed to insert text: {}", e),
@@ -182,18 +200,18 @@ pub fn run() {
                         }
                     }
                 })
-                .build()
+                .build(),
         )
         .invoke_handler(tauri::generate_handler![greet])
         .setup(|app| {
             // Hide from dock on macOS
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-            
+
             // Create menu items
             let show_i = MenuItem::with_id(app, "show", "Settings", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            
+
             // Build menu
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
@@ -209,22 +227,20 @@ pub fn run() {
             let _tray = TrayIconBuilder::with_id(TRAY_ID)
                 .icon(icon)
                 .menu(&menu)
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
                     }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
                 })
                 .build(app)?;
-            
+
             // Configure window to hide instead of close
             if let Some(window) = app.get_webview_window("main") {
                 let window_clone = window.clone();
@@ -237,7 +253,7 @@ pub fn run() {
                     }
                 });
             }
-            
+
             Ok(())
         })
         .run(tauri::generate_context!())
