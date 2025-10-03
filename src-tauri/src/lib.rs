@@ -2,9 +2,73 @@ use tauri::{Manager, menu::{Menu, MenuItem}, tray::TrayIconBuilder, image::Image
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
 use image::GenericImageView;
 use std::sync::{Arc, Mutex};
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
 // Tray icon ID for accessing tray from shortcut handler
 const TRAY_ID: &str = "main-tray";
+
+// Audio recording state - stores the stream to properly manage its lifecycle
+struct AudioRecorder {
+    stream: Option<cpal::Stream>,
+}
+
+// Safety: We need to implement Send manually since cpal::Stream isn't Send by default
+// but we're only accessing it from a single thread (the main thread) via Arc<Mutex>
+unsafe impl Send for AudioRecorder {}
+
+impl AudioRecorder {
+    fn new() -> Self {
+        Self { stream: None }
+    }
+
+    fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        if self.stream.is_none() {
+            // Get the default audio host and input device
+            let host = cpal::default_host();
+            let device = host.default_input_device()
+                .ok_or("No input device available")?;
+
+            let config = device.default_input_config()?;
+            println!("Starting audio capture with config: {:?}", config);
+
+            // Create the audio stream based on sample format
+            let stream = match config.sample_format() {
+                cpal::SampleFormat::F32 => build_input_stream::<f32>(&device, &config.into())?,
+                cpal::SampleFormat::I16 => build_input_stream::<i16>(&device, &config.into())?,
+                cpal::SampleFormat::U16 => build_input_stream::<u16>(&device, &config.into())?,
+                _ => return Err("Unsupported sample format".into()),
+            };
+
+            stream.play()?;
+            self.stream = Some(stream);
+        }
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        if let Some(stream) = self.stream.take() {
+            // Explicitly drop the stream to release microphone access
+            drop(stream);
+            println!("Audio capture stopped - microphone released");
+        }
+    }
+}
+
+fn build_input_stream<T>(device: &cpal::Device, config: &cpal::StreamConfig) -> Result<cpal::Stream, Box<dyn std::error::Error>>
+where
+    T: cpal::Sample + cpal::SizedSample,
+{
+    let stream = device.build_input_stream(
+        config,
+        move |_data: &[T], _: &cpal::InputCallbackInfo| {
+            // Just listening, not storing data
+        },
+        |err| eprintln!("Audio stream error: {}", err),
+        None,
+    )?;
+
+    Ok(stream)
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -30,6 +94,10 @@ pub fn run() {
     let default_icon_clone = default_icon.clone();
     let active_icon_clone = active_icon.clone();
 
+    // Create audio recorder state wrapped in Arc<Mutex> for thread-safe access
+    let audio_recorder = Arc::new(Mutex::new(AudioRecorder::new()));
+    let audio_recorder_clone = audio_recorder.clone();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
@@ -40,16 +108,30 @@ pub fn run() {
                         if let Some(tray) = app.tray_by_id(TRAY_ID) {
                             match event.state {
                                 ShortcutState::Pressed => {
+                                    // Switch to active icon
                                     if let Ok(icon) = active_icon_clone.lock() {
                                         let _ = tray.set_icon(Some(icon.clone()));
                                     }
-                                    println!("Option+Space pressed - recording started");
+
+                                    // Start audio capture
+                                    if let Ok(mut recorder) = audio_recorder_clone.lock() {
+                                        match recorder.start() {
+                                            Ok(_) => println!("Option+Space pressed - recording started"),
+                                            Err(e) => eprintln!("Failed to start audio capture: {}", e),
+                                        }
+                                    }
                                 }
                                 ShortcutState::Released => {
+                                    // Switch back to default icon
                                     if let Ok(icon) = default_icon_clone.lock() {
                                         let _ = tray.set_icon(Some(icon.clone()));
                                     }
-                                    println!("Option+Space released - recording stopped");
+
+                                    // Stop audio capture
+                                    if let Ok(mut recorder) = audio_recorder_clone.lock() {
+                                        recorder.stop();
+                                        println!("Option+Space released - recording stopped");
+                                    }
                                 }
                             }
                         }
@@ -81,7 +163,6 @@ pub fn run() {
             // Create tray icon with ID (same ID as used in shortcut handler)
             let _tray = TrayIconBuilder::with_id(TRAY_ID)
                 .icon(icon)
-                .icon_as_template(true)
                 .menu(&menu)
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
