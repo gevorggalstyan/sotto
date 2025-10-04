@@ -78,7 +78,7 @@ fn get_available_models() -> Vec<ModelInfo> {
 }
 
 // Get default model name
-const DEFAULT_MODEL: &str = "large-v3-turbo";
+const DEFAULT_MODEL: &str = "tiny.en-q5_1";
 
 // Get the model file path for a specific model
 fn get_model_path_for(app: &AppHandle, model_name: &str) -> PathBuf {
