@@ -1,5 +1,4 @@
 import { createIcons, Settings, Info, Mic2, AlertCircle, Mic, Keyboard, Download, Zap } from 'lucide';
-import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
 
 // Tab navigation functionality
 function switchTab(tabId: string) {
@@ -51,7 +50,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // Handle model selection cards
   const modelCards = Array.from(document.querySelectorAll<HTMLElement>('.model-card'));
   if (modelCards.length > 0) {
-    type ModelAction = 'use' | 'download' | 'refresh' | 'remove';
+    type ModelAction = 'use' | 'download' | 'refresh' | 'remove' | 'confirm-remove' | 'cancel-remove';
 
     interface BackendModelStatus {
       name: string;
@@ -64,24 +63,17 @@ window.addEventListener("DOMContentLoaded", () => {
       error: string | null;
     }
 
-    const promptConfirm = async (message: string) => {
-      try {
-        return await confirmDialog(message, {
-            title: 'Remove Model',
-          kind: 'warning',
-          okLabel: 'Remove',
-          cancelLabel: 'Cancel',
-        });
-      } catch (error) {
-        console.error('Failed to show native confirm dialog, falling back to browser confirm.', error);
-        return window.confirm(message);
-      }
-    };
-
     interface ModelCardElements {
       card: HTMLElement;
       statusLabel: HTMLElement;
       buttons: Record<ModelAction, HTMLButtonElement>;
+      actionsContainer: HTMLElement;
+      confirm: {
+        container: HTMLElement;
+        message: HTMLElement;
+        yes: HTMLButtonElement;
+        no: HTMLButtonElement;
+      };
       progress: {
         wrapper: HTMLElement;
         bar: HTMLProgressElement;
@@ -98,6 +90,7 @@ window.addEventListener("DOMContentLoaded", () => {
       error?: string;
       inFlightAction: ModelAction | null;
       pendingLabel: string | null;
+      isConfirmingRemoval: boolean;
     }
 
     interface DownloadEventPayload {
@@ -118,6 +111,8 @@ window.addEventListener("DOMContentLoaded", () => {
       download: 'Download',
       refresh: 'Refresh',
       remove: 'Remove',
+      'confirm-remove': 'Remove',
+      'cancel-remove': 'Cancel',
     };
 
     type TauriGlobal = {
@@ -154,6 +149,7 @@ window.addEventListener("DOMContentLoaded", () => {
             error: undefined,
             inFlightAction: null,
             pendingLabel: null,
+            isConfirmingRemoval: false,
           });
         }
         return modelStates.get(modelName)!;
@@ -166,29 +162,47 @@ window.addEventListener("DOMContentLoaded", () => {
         return Math.min(100, Math.max(0, (downloadedBytes / totalBytes) * 100));
       };
 
-      const formatBytes = (bytes: number): string => {
-        const KB = 1024;
-        const MB = KB * 1024;
-        const GB = MB * 1024;
-        if (bytes >= GB) {
-          return `${(bytes / GB).toFixed(1)} GB`;
-        }
-        if (bytes >= MB) {
-          return `${(bytes / MB).toFixed(1)} MB`;
-        }
-        if (bytes >= KB) {
-          return `${(bytes / KB).toFixed(1)} KB`;
-        }
-        return `${bytes} B`;
-      };
+    const formatBytes = (bytes: number): string => {
+      const KB = 1024;
+      const MB = KB * 1024;
+      const GB = MB * 1024;
+      if (bytes >= GB) {
+        return `${(bytes / GB).toFixed(1)} GB`;
+      }
+      if (bytes >= MB) {
+        return `${(bytes / MB).toFixed(1)} MB`;
+      }
+      if (bytes >= KB) {
+        return `${(bytes / KB).toFixed(1)} KB`;
+      }
+      return `${bytes} B`;
+    };
 
-      const truncate = (value: string, max = 80): string => {
-        return value.length > max ? `${value.slice(0, max - 1)}…` : value;
-      };
+    const extractErrorMessage = (error: unknown): string => {
+      if (error instanceof Error) return error.message;
+      if (typeof error === 'string') return error;
+      if (error && typeof error === 'object') {
+        const errorObj = error as Record<string, unknown>;
+        if (typeof errorObj.error === 'string') return errorObj.error;
+        if (typeof errorObj.message === 'string') return errorObj.message;
+      }
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return String(error);
+      }
+    };
+
+    const truncate = (value: string, max = 80): string => {
+      return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+    };
 
       const formatStatus = (state: ModelState): string => {
         if (state.pendingLabel) {
           return state.pendingLabel;
+        }
+        if (state.isConfirmingRemoval) {
+          return 'Confirm removal?';
         }
         if (state.isDownloading) {
           if (state.progressPercent !== null) {
@@ -226,12 +240,18 @@ window.addEventListener("DOMContentLoaded", () => {
         elements.card.classList.toggle('downloading', state.isDownloading);
         elements.card.classList.toggle('downloaded', state.isDownloaded);
         elements.card.classList.toggle('errored', Boolean(state.error));
+        elements.card.classList.toggle('confirming-remove', state.isConfirmingRemoval);
 
         const disableAll = state.inFlightAction !== null || state.isDownloading;
 
         Object.values(elements.buttons).forEach(button => {
           button.disabled = disableAll;
         });
+
+        elements.actionsContainer.hidden = state.isConfirmingRemoval;
+        elements.confirm.container.hidden = !state.isConfirmingRemoval;
+        elements.confirm.yes.disabled = disableAll;
+        elements.confirm.no.disabled = disableAll;
 
         elements.buttons.use.hidden = !(state.isDownloaded && !state.isActive && !state.isDownloading);
         elements.buttons.download.hidden = state.isDownloaded || state.isDownloading;
@@ -303,7 +323,33 @@ window.addEventListener("DOMContentLoaded", () => {
         metaRow.className = 'model-meta';
         metaRow.appendChild(statusLabel);
 
-        footer.append(actionsContainer, metaRow);
+        const confirmContainer = document.createElement('div');
+        confirmContainer.className = 'model-confirm';
+        confirmContainer.hidden = true;
+
+        const confirmMessage = document.createElement('span');
+        confirmMessage.className = 'model-confirm-text';
+        confirmMessage.textContent = 'Remove this model?';
+
+        const confirmButtons = document.createElement('div');
+        confirmButtons.className = 'model-confirm-actions';
+
+        const confirmYes = document.createElement('button');
+        confirmYes.type = 'button';
+        confirmYes.className = 'model-button model-button-danger';
+        confirmYes.dataset.action = 'confirm-remove';
+        confirmYes.textContent = 'Yes, remove';
+
+        const confirmNo = document.createElement('button');
+        confirmNo.type = 'button';
+        confirmNo.className = 'model-button';
+        confirmNo.dataset.action = 'cancel-remove';
+        confirmNo.textContent = 'Cancel';
+
+        confirmButtons.append(confirmYes, confirmNo);
+        confirmContainer.append(confirmMessage, confirmButtons);
+
+        footer.append(actionsContainer, confirmContainer, metaRow);
 
         const progressWrapper = document.createElement('div');
         progressWrapper.className = 'model-progress';
@@ -325,6 +371,15 @@ window.addEventListener("DOMContentLoaded", () => {
             download: downloadButton,
             refresh: refreshButton,
             remove: removeButton,
+            'confirm-remove': confirmYes,
+            'cancel-remove': confirmNo,
+          },
+          actionsContainer,
+          confirm: {
+            container: confirmContainer,
+            message: confirmMessage,
+            yes: confirmYes,
+            no: confirmNo,
           },
           progress: {
             wrapper: progressWrapper,
@@ -345,6 +400,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const refreshStatuses = async () => {
         try {
           const statuses = await invoke<BackendModelStatus[]>('get_model_statuses');
+          console.log('Model statuses', statuses);
           let activeModelName: string | null = null;
 
           statuses.forEach(status => {
@@ -358,6 +414,9 @@ window.addEventListener("DOMContentLoaded", () => {
               ? computePercent(state.downloadedBytes, state.totalBytes)
               : (status.is_downloaded ? 100 : null);
             state.error = status.error ?? undefined;
+            if (!status.is_downloaded) {
+              state.isConfirmingRemoval = false;
+            }
             if (status.is_active) {
               activeModelName = status.name;
             }
@@ -385,21 +444,32 @@ window.addEventListener("DOMContentLoaded", () => {
         }
 
         if (action === 'remove') {
-          const confirmed = await promptConfirm(`Remove the ${modelName} model from disk? This will delete the downloaded file.`);
-          if (!confirmed) {
-            return;
-          }
+          state.isConfirmingRemoval = true;
+          state.pendingLabel = null;
+          updateCardUI(modelName);
+          return;
         }
 
-        state.inFlightAction = action;
+        if (action === 'cancel-remove') {
+          state.isConfirmingRemoval = false;
+          state.pendingLabel = null;
+          updateCardUI(modelName);
+          return;
+        }
+
+        const effectiveAction: ModelAction | 'remove' = action === 'confirm-remove' ? 'remove' : action;
+
+        state.inFlightAction = effectiveAction;
         state.pendingLabel =
-          action === 'use'
+          effectiveAction === 'use'
             ? 'Switching…'
-            : action === 'download'
+            : effectiveAction === 'download'
               ? 'Preparing download…'
-              : action === 'refresh'
+              : effectiveAction === 'refresh'
                 ? 'Refreshing…'
-                : 'Removing…';
+                : effectiveAction === 'remove'
+                  ? 'Removing…'
+                  : null;
         state.error = undefined;
         updateCardUI(modelName);
 
@@ -408,8 +478,10 @@ window.addEventListener("DOMContentLoaded", () => {
             await invoke('start_model_download', { modelName });
           } else if (action === 'refresh') {
             await invoke('refresh_model_download', { modelName });
-          } else if (action === 'remove') {
+          } else if (action === 'confirm-remove') {
             await invoke('remove_model', { modelName });
+            state.isConfirmingRemoval = false;
+            alert(`${modelName} removed.`);
           } else if (action === 'use') {
             await invoke('switch_model', { modelName });
             localStorage.setItem('selected_model', modelName);
@@ -418,8 +490,13 @@ window.addEventListener("DOMContentLoaded", () => {
           await refreshStatuses();
         } catch (error) {
           console.error(`Failed to ${action} model ${modelName}:`, error);
-          const message = error instanceof Error ? error.message : String(error);
-          alert(`Failed to ${ACTION_LABELS[action].toLowerCase()} model: ${message}`);
+          const message = extractErrorMessage(error);
+          if (effectiveAction === 'remove' && message.includes('currently active')) {
+            state.isConfirmingRemoval = true;
+            alert('Switch to another model before removing the active one.');
+          } else {
+            alert(`Failed to ${ACTION_LABELS[effectiveAction].toLowerCase()} model: ${message}`);
+          }
         } finally {
           state.inFlightAction = null;
           state.pendingLabel = null;

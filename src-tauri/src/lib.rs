@@ -841,6 +841,7 @@ fn remove_model(
     whisper: tauri::State<'_, WhisperManager>,
     model_name: String,
 ) -> Result<(), String> {
+    println!("remove_model called for {}", model_name);
     let is_active = {
         let runtime = whisper.inner().inner.lock();
         runtime
@@ -851,6 +852,7 @@ fn remove_model(
     };
 
     if is_active {
+        println!("remove_model abort: {} is active", model_name);
         return Err("Model is currently active. Switch to another model before removing.".to_string());
     }
 
@@ -867,7 +869,9 @@ fn remove_model(
     if model_path.exists() {
         std::fs::remove_file(&model_path)
             .map_err(|e| format!("Failed to remove model: {}", e))?;
+        println!("Removed file: {:?}", model_path);
     } else {
+        println!("remove_model abort: file not found for {}", model_name);
         return Err("Model file not found.".to_string());
     }
 
@@ -1049,7 +1053,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["alt+space"])

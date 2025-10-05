@@ -235,6 +235,10 @@ body {
   color: #d92d20;
 }
 
+.model-card.confirming-remove {
+  border-color: #ff3b30;
+}
+
 .model-card-header {
   display: flex;
   align-items: baseline;
@@ -299,6 +303,37 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.model-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.model-confirm[hidden] {
+  display: none;
+}
+
+.model-confirm-text {
+  font-size: 13px;
+  color: #1d1d1f;
+}
+
+.model-confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.model-button-danger {
+  border-color: #ff3b30;
+  color: #ff3b30;
+}
+
+.model-button-danger:hover:not(:disabled) {
+  background-color: #ff3b30;
+  color: #ffffff;
 }
 
 .model-progress {
@@ -671,6 +706,10 @@ body {
     color: #ff453a;
   }
 
+  .model-card.confirming-remove {
+    border-color: #ff453a;
+  }
+
   .model-card.downloaded:not(.selected) {
     border-color: #4c4c4e;
   }
@@ -710,6 +749,20 @@ body {
   .model-link:hover {
     background-color: #f5f5f7;
     color: #1c1c1e;
+  }
+
+  .model-confirm-text {
+    color: #f5f5f7;
+  }
+
+  .model-button-danger {
+    border-color: #ff453a;
+    color: #ff453a;
+  }
+
+  .model-button-danger:hover:not(:disabled) {
+    background-color: #ff453a;
+    color: #ffffff;
   }
 
   .model-button {
