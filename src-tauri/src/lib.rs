@@ -1063,10 +1063,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_shortcuts(["alt+space"])
-                .expect("Failed to register shortcut")
+                .with_shortcuts(["alt+space", "ctrl+alt+space"])
+                .expect("Failed to register shortcuts")
                 .with_handler(move |app, shortcut, event| {
-                    if shortcut.matches(Modifiers::ALT, Code::Space) {
+                    if shortcut.matches(Modifiers::ALT, Code::Space)
+                        || shortcut.matches(Modifiers::ALT | Modifiers::CONTROL, Code::Space) {
                         if let Some(tray) = app.tray_by_id(TRAY_ID) {
                             match event.state {
                                 ShortcutState::Pressed => {
