@@ -37,57 +37,332 @@
             <h2>General</h2>
 
             <div class="setting-group">
-              <div class="setting-item">
+              <div class="setting-item model-setting">
                 <div class="setting-label">
-                  <label for="model-selection">Whisper Model</label>
+                  <label>Whisper Model</label>
                   <span class="setting-description">Choose model size (larger = more accurate, slower)</span>
                 </div>
-                <select id="model-selection" class="select-input">
-                  <optgroup label="Tiny Models (Ultra Fast)">
-                    <option value="tiny">Tiny (75MB)</option>
-                    <option value="tiny.en">Tiny English (75MB)</option>
-                    <option value="tiny-q5_1">Tiny Q5 (31MB)</option>
-                    <option value="tiny.en-q5_1" selected>Tiny English Q5 (31MB) ⭐ Recommended</option>
-                    <option value="tiny-q8_0">Tiny Q8 (42MB)</option>
-                    <option value="tiny.en-q8_0">Tiny English Q8 (42MB)</option>
-                  </optgroup>
-                  <optgroup label="Base Models (Fast)">
-                    <option value="base">Base (142MB)</option>
-                    <option value="base.en">Base English (142MB)</option>
-                    <option value="base-q5_1">Base Q5 (57MB)</option>
-                    <option value="base.en-q5_1">Base English Q5 (57MB)</option>
-                    <option value="base-q8_0">Base Q8 (78MB)</option>
-                    <option value="base.en-q8_0">Base English Q8 (78MB)</option>
-                  </optgroup>
-                  <optgroup label="Small Models (Balanced)">
-                    <option value="small">Small (466MB)</option>
-                    <option value="small.en">Small English (466MB)</option>
-                    <option value="small.en-tdrz">Small English TDRZ (465MB)</option>
-                    <option value="small-q5_1">Small Q5 (181MB)</option>
-                    <option value="small.en-q5_1">Small English Q5 (181MB)</option>
-                    <option value="small-q8_0">Small Q8 (252MB)</option>
-                    <option value="small.en-q8_0">Small English Q8 (252MB)</option>
-                  </optgroup>
-                  <optgroup label="Medium Models (Accurate)">
-                    <option value="medium">Medium (1.5GB)</option>
-                    <option value="medium.en">Medium English (1.5GB)</option>
-                    <option value="medium-q5_0">Medium Q5 (514MB)</option>
-                    <option value="medium.en-q5_0">Medium English Q5 (514MB)</option>
-                    <option value="medium-q8_0">Medium Q8 (785MB)</option>
-                    <option value="medium.en-q8_0">Medium English Q8 (785MB)</option>
-                  </optgroup>
-                  <optgroup label="Large Models (Best Quality)">
-                    <option value="large-v3-turbo">Large v3 Turbo (1.5GB)</option>
-                    <option value="large-v3-turbo-q5_0">Large v3 Turbo Q5 (547MB)</option>
-                    <option value="large-v3-turbo-q8_0">Large v3 Turbo Q8 (834MB)</option>
-                    <option value="large-v3">Large v3 (3GB)</option>
-                    <option value="large-v3-q5_0">Large v3 Q5 (1.1GB)</option>
-                    <option value="large-v2">Large v2 (3GB)</option>
-                    <option value="large-v2-q5_0">Large v2 Q5 (1.1GB)</option>
-                    <option value="large-v2-q8_0">Large v2 Q8 (1.5GB)</option>
-                    <option value="large-v1">Large v1 (3GB)</option>
-                  </optgroup>
-                </select>
+                <div class="model-groups">
+                  <div class="model-group">
+                    <h3 class="model-group-title">Tiny Models · Ultra Fast</h3>
+                    <div class="model-grid">
+                      <div class="model-card" data-model="tiny">
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny</span>
+                          <span class="model-size">75MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="tiny.en">
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny English</span>
+                          <span class="model-size">75MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny.en">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="tiny-q5_1">
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny Q5</span>
+                          <span class="model-size">31MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="tiny.en-q5_1" data-default="true">
+                        <span class="model-badge">Recommended</span>
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny English Q5</span>
+                          <span class="model-size">31MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny.en-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="tiny-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny Q8</span>
+                          <span class="model-size">42MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="tiny.en-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Tiny English Q8</span>
+                          <span class="model-size">42MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="tiny.en-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="model-group">
+                    <h3 class="model-group-title">Base Models · Fast</h3>
+                    <div class="model-grid">
+                      <div class="model-card" data-model="base">
+                        <div class="model-card-header">
+                          <span class="model-name">Base</span>
+                          <span class="model-size">142MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="base-q5_1">
+                        <div class="model-card-header">
+                          <span class="model-name">Base Q5</span>
+                          <span class="model-size">57MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="base-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Base Q8</span>
+                          <span class="model-size">78MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="base.en">
+                        <div class="model-card-header">
+                          <span class="model-name">Base English</span>
+                          <span class="model-size">142MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base.en">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="base.en-q5_1">
+                        <div class="model-card-header">
+                          <span class="model-name">Base English Q5</span>
+                          <span class="model-size">57MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base.en-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="base.en-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Base English Q8</span>
+                          <span class="model-size">78MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="base.en-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="model-group">
+                    <h3 class="model-group-title">Small Models · Balanced</h3>
+                    <div class="model-grid">
+                      <div class="model-card" data-model="small">
+                        <div class="model-card-header">
+                          <span class="model-name">Small</span>
+                          <span class="model-size">466MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="small-q5_1">
+                        <div class="model-card-header">
+                          <span class="model-name">Small Q5</span>
+                          <span class="model-size">181MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="small-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Small Q8</span>
+                          <span class="model-size">252MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="small.en">
+                        <div class="model-card-header">
+                          <span class="model-name">Small English</span>
+                          <span class="model-size">466MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small.en">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="small.en-q5_1">
+                        <div class="model-card-header">
+                          <span class="model-name">Small English Q5</span>
+                          <span class="model-size">181MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small.en-q5_1">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="small.en-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Small English Q8</span>
+                          <span class="model-size">252MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="small.en-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="model-group">
+                    <h3 class="model-group-title">Medium Models · Accurate</h3>
+                    <div class="model-grid">
+                      <div class="model-card" data-model="medium">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium</span>
+                          <span class="model-size">1.5GB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="medium-q5_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium Q5</span>
+                          <span class="model-size">514MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium-q5_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="medium-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium Q8</span>
+                          <span class="model-size">785MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="medium.en">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium English</span>
+                          <span class="model-size">1.5GB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium.en">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="medium.en-q5_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium English Q5</span>
+                          <span class="model-size">514MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium.en-q5_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="medium.en-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Medium English Q8</span>
+                          <span class="model-size">785MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="medium.en-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="model-group">
+                    <h3 class="model-group-title">Large Models · Best Quality</h3>
+                    <div class="model-grid">
+                      <div class="model-card" data-model="large-v3">
+                        <div class="model-card-header">
+                          <span class="model-name">Large v3</span>
+                          <span class="model-size">2.9GB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="large-v3">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="large-v3-q5_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Large v3 Q5</span>
+                          <span class="model-size">1.1GB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="large-v3-q5_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="large-v3-turbo">
+                        <div class="model-card-header">
+                          <span class="model-name">Large v3 Turbo</span>
+                          <span class="model-size">1.5GB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="large-v3-turbo">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="large-v3-turbo-q5_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Large v3 Turbo Q5</span>
+                          <span class="model-size">547MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="large-v3-turbo-q5_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                      <div class="model-card" data-model="large-v3-turbo-q8_0">
+                        <div class="model-card-header">
+                          <span class="model-name">Large v3 Turbo Q8</span>
+                          <span class="model-size">834MB</span>
+                        </div>
+                        <div class="model-card-footer">
+                          <button class="model-button" data-model="large-v3-turbo-q8_0">Use Model</button>
+                          <span class="model-status" data-status>Checking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="model-footer">
+                <button class="model-link" data-action="open-models">Open Models Location</button>
               </div>
             </div>
           </div>
@@ -126,7 +401,7 @@
                 <p><strong>Symptoms:</strong> "[Model not loaded]" appears, transcription doesn't work</p>
                 <p><strong>What happens:</strong></p>
                 <ul>
-                  <li>On first launch, Sotto automatically downloads the Whisper model (~1.5GB) in the background</li>
+                  <li>On first launch, Sotto automatically downloads the Whisper model (~31MB) in the background</li>
                   <li>The app remains functional while downloading</li>
                   <li>Once complete, the model loads automatically</li>
                 </ul>

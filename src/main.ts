@@ -1,4 +1,5 @@
 import { createIcons, Settings, Info, Mic2, AlertCircle, Mic, Keyboard, Download, Zap } from 'lucide';
+import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog';
 
 // Tab navigation functionality
 function switchTab(tabId: string) {
@@ -47,68 +48,496 @@ window.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Handle model selection changes
-  const modelSelect = document.getElementById('model-selection') as HTMLSelectElement;
-  if (modelSelect) {
-    // Mark downloaded models with ✓
-    async function updateModelIndicators() {
-      try {
-        // @ts-ignore - Tauri command
-        const downloadedModels = await window.__TAURI__.core.invoke('get_downloaded_models') as string[];
+  // Handle model selection cards
+  const modelCards = Array.from(document.querySelectorAll<HTMLElement>('.model-card'));
+  if (modelCards.length > 0) {
+    type ModelAction = 'use' | 'download' | 'refresh' | 'remove';
 
-        // Update all options
-        Array.from(modelSelect.options).forEach(option => {
-          const modelName = option.value;
-          const isDownloaded = downloadedModels.includes(modelName);
-
-          // Remove existing indicators
-          option.text = option.text.replace(/^✓ /, '').replace(/^\[Download\] /, '');
-
-          // Add appropriate indicator
-          if (isDownloaded) {
-            option.text = `✓ ${option.text}`;
-          } else {
-            option.text = `[Download] ${option.text}`;
-          }
-        });
-      } catch (error) {
-        console.error('Failed to get downloaded models:', error);
-      }
+    interface BackendModelStatus {
+      name: string;
+      size_mb: number;
+      is_downloaded: boolean;
+      is_downloading: boolean;
+      is_active: boolean;
+      downloaded_bytes: number;
+      total_bytes: number | null;
+      error: string | null;
     }
 
-    // Update indicators on load
-    updateModelIndicators();
-
-    modelSelect.addEventListener('change', async (e) => {
-      const target = e.target as HTMLSelectElement;
-      const modelName = target.value;
-
-      console.log(`Switching to model: ${modelName}`);
-
+    const promptConfirm = async (message: string) => {
       try {
-        // @ts-ignore - Tauri command
-        const result = await window.__TAURI__.core.invoke('switch_model', { modelName });
-        console.log(result);
-        localStorage.setItem('selected_model', modelName);
-        await updateModelIndicators(); // Refresh indicators after switch
-        alert(`Successfully switched to ${modelName} model!`);
+        return await confirmDialog(message, {
+            title: 'Remove Model',
+          kind: 'warning',
+          okLabel: 'Remove',
+          cancelLabel: 'Cancel',
+        });
       } catch (error) {
-        console.error('Failed to switch model:', error);
-        alert(`Failed to switch model: ${error}`);
+        console.error('Failed to show native confirm dialog, falling back to browser confirm.', error);
+        return window.confirm(message);
       }
-    });
+    };
 
-    // Load saved model selection
-    const savedModel = localStorage.getItem('selected_model');
-    if (savedModel) {
-      modelSelect.value = savedModel;
+    interface ModelCardElements {
+      card: HTMLElement;
+      statusLabel: HTMLElement;
+      buttons: Record<ModelAction, HTMLButtonElement>;
+      progress: {
+        wrapper: HTMLElement;
+        bar: HTMLProgressElement;
+      };
+    }
+
+    interface ModelState {
+      isDownloaded: boolean;
+      isDownloading: boolean;
+      isActive: boolean;
+      downloadedBytes: number;
+      totalBytes: number | null;
+      progressPercent: number | null;
+      error?: string;
+      inFlightAction: ModelAction | null;
+      pendingLabel: string | null;
+    }
+
+    interface DownloadEventPayload {
+      modelName: string;
+      downloadedBytes: number;
+      totalBytes?: number | null;
+      percent?: number | null;
+      status: string;
+      error?: string | null;
+    }
+
+    interface ActiveModelPayload {
+      modelName?: string | null;
+    }
+
+    const ACTION_LABELS: Record<ModelAction, string> = {
+      use: 'Use',
+      download: 'Download',
+      refresh: 'Refresh',
+      remove: 'Remove',
+    };
+
+    type TauriGlobal = {
+      core: {
+        invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+      };
+      event: {
+        listen: (
+          event: string,
+          handler: (event: { payload: unknown }) => void
+        ) => Promise<() => void>;
+      };
+    };
+
+    const tauriGlobal = (window as unknown as { __TAURI__?: TauriGlobal }).__TAURI__;
+    if (!tauriGlobal) {
+      console.warn('Tauri API not available; skipping model controls.');
+    } else {
+      const invoke = tauriGlobal.core.invoke;
+      const listen = tauriGlobal.event.listen;
+
+      const cardElements = new Map<string, ModelCardElements>();
+      const modelStates = new Map<string, ModelState>();
+
+      const ensureState = (modelName: string): ModelState => {
+        if (!modelStates.has(modelName)) {
+          modelStates.set(modelName, {
+            isDownloaded: false,
+            isDownloading: false,
+            isActive: false,
+            downloadedBytes: 0,
+            totalBytes: null,
+            progressPercent: null,
+            error: undefined,
+            inFlightAction: null,
+            pendingLabel: null,
+          });
+        }
+        return modelStates.get(modelName)!;
+      };
+
+      const computePercent = (downloadedBytes: number, totalBytes: number | null): number | null => {
+        if (!totalBytes || totalBytes === 0) {
+          return null;
+        }
+        return Math.min(100, Math.max(0, (downloadedBytes / totalBytes) * 100));
+      };
+
+      const formatBytes = (bytes: number): string => {
+        const KB = 1024;
+        const MB = KB * 1024;
+        const GB = MB * 1024;
+        if (bytes >= GB) {
+          return `${(bytes / GB).toFixed(1)} GB`;
+        }
+        if (bytes >= MB) {
+          return `${(bytes / MB).toFixed(1)} MB`;
+        }
+        if (bytes >= KB) {
+          return `${(bytes / KB).toFixed(1)} KB`;
+        }
+        return `${bytes} B`;
+      };
+
+      const truncate = (value: string, max = 80): string => {
+        return value.length > max ? `${value.slice(0, max - 1)}…` : value;
+      };
+
+      const formatStatus = (state: ModelState): string => {
+        if (state.pendingLabel) {
+          return state.pendingLabel;
+        }
+        if (state.isDownloading) {
+          if (state.progressPercent !== null) {
+            return `Downloading ${Math.round(state.progressPercent)}%`;
+          }
+          if (state.downloadedBytes > 0) {
+            return `Downloading ${formatBytes(state.downloadedBytes)}`;
+          }
+          return 'Downloading…';
+        }
+        if (state.error) {
+          return `Error: ${truncate(state.error)}`;
+        }
+        if (state.isActive && !state.isDownloaded) {
+          return 'Active · Download required';
+        }
+        if (state.isActive) {
+          return 'Active';
+        }
+        if (state.isDownloaded) {
+          return 'Downloaded';
+        }
+        return 'Download required';
+      };
+
+      const updateCardUI = (modelName: string) => {
+        const elements = cardElements.get(modelName);
+        if (!elements) {
+          return;
+        }
+
+        const state = ensureState(modelName);
+
+        elements.card.classList.toggle('selected', state.isActive);
+        elements.card.classList.toggle('downloading', state.isDownloading);
+        elements.card.classList.toggle('downloaded', state.isDownloaded);
+        elements.card.classList.toggle('errored', Boolean(state.error));
+
+        const disableAll = state.inFlightAction !== null || state.isDownloading;
+
+        Object.values(elements.buttons).forEach(button => {
+          button.disabled = disableAll;
+        });
+
+        elements.buttons.use.hidden = !(state.isDownloaded && !state.isActive && !state.isDownloading);
+        elements.buttons.download.hidden = state.isDownloaded || state.isDownloading;
+        elements.buttons.refresh.hidden = !state.isDownloaded || state.isDownloading;
+        elements.buttons.remove.hidden = !state.isDownloaded || state.isActive || state.isDownloading;
+
+        elements.statusLabel.textContent = formatStatus(state);
+
+        if (state.isDownloading) {
+          elements.progress.wrapper.dataset.visible = 'true';
+          const percent = state.progressPercent;
+          if (percent !== null) {
+            const clamped = Math.min(100, Math.max(0, percent));
+            elements.progress.bar.max = 100;
+            elements.progress.bar.value = clamped;
+          } else if (state.downloadedBytes > 0) {
+            elements.progress.bar.removeAttribute('value');
+          } else {
+            elements.progress.bar.max = 100;
+            elements.progress.bar.value = 0;
+          }
+        } else {
+          elements.progress.wrapper.dataset.visible = 'false';
+          elements.progress.bar.max = 100;
+          elements.progress.bar.value = 0;
+        }
+      };
+
+      const initializeCard = (card: HTMLElement) => {
+        const modelName = card.dataset.model;
+        if (!modelName) {
+          return;
+        }
+
+        const footer = card.querySelector('.model-card-footer');
+        const statusLabel = footer?.querySelector('[data-status]') as HTMLElement | null;
+        const primaryButton = footer?.querySelector<HTMLButtonElement>('.model-button');
+
+        if (!footer || !statusLabel || !primaryButton) {
+          return;
+        }
+
+        footer.innerHTML = '';
+
+        primaryButton.type = 'button';
+        primaryButton.dataset.action = 'use';
+        primaryButton.textContent = ACTION_LABELS.use;
+        primaryButton.removeAttribute('data-model');
+
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = 'model-actions';
+        actionsContainer.appendChild(primaryButton);
+
+        const createActionButton = (action: ModelAction) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'model-button';
+          button.dataset.action = action;
+          button.textContent = ACTION_LABELS[action];
+          actionsContainer.appendChild(button);
+          return button;
+        };
+
+        const downloadButton = createActionButton('download');
+        const refreshButton = createActionButton('refresh');
+        const removeButton = createActionButton('remove');
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'model-meta';
+        metaRow.appendChild(statusLabel);
+
+        footer.append(actionsContainer, metaRow);
+
+        const progressWrapper = document.createElement('div');
+        progressWrapper.className = 'model-progress';
+        progressWrapper.dataset.visible = 'false';
+
+        const progressBar = document.createElement('progress');
+        progressBar.className = 'model-progress-bar';
+        progressBar.max = 100;
+        progressBar.value = 0;
+
+        progressWrapper.appendChild(progressBar);
+        card.appendChild(progressWrapper);
+
+        const elements: ModelCardElements = {
+          card,
+          statusLabel,
+          buttons: {
+            use: primaryButton,
+            download: downloadButton,
+            refresh: refreshButton,
+            remove: removeButton,
+          },
+          progress: {
+            wrapper: progressWrapper,
+            bar: progressBar,
+          },
+        };
+
+        cardElements.set(modelName, elements);
+        ensureState(modelName);
+
+        (Object.entries(elements.buttons) as Array<[ModelAction, HTMLButtonElement]>).forEach(([action, button]) => {
+          button.addEventListener('click', () => handleAction(modelName, action));
+        });
+
+        updateCardUI(modelName);
+      };
+
+      const refreshStatuses = async () => {
+        try {
+          const statuses = await invoke<BackendModelStatus[]>('get_model_statuses');
+          let activeModelName: string | null = null;
+
+          statuses.forEach(status => {
+            const state = ensureState(status.name);
+            state.isDownloaded = status.is_downloaded;
+            state.isDownloading = status.is_downloading;
+            state.isActive = status.is_active;
+            state.downloadedBytes = status.downloaded_bytes ?? 0;
+            state.totalBytes = status.total_bytes ?? null;
+            state.progressPercent = status.is_downloading
+              ? computePercent(state.downloadedBytes, state.totalBytes)
+              : (status.is_downloaded ? 100 : null);
+            state.error = status.error ?? undefined;
+            if (status.is_active) {
+              activeModelName = status.name;
+            }
+          });
+
+          if (activeModelName) {
+            localStorage.setItem('selected_model', activeModelName);
+          }
+
+          cardElements.forEach((_, name) => updateCardUI(name));
+        } catch (error) {
+          console.error('Failed to fetch model statuses:', error);
+        }
+      };
+
+      const handleAction = async (modelName: string, action: ModelAction) => {
+        const elements = cardElements.get(modelName);
+        if (!elements) {
+          return;
+        }
+
+        const state = ensureState(modelName);
+        if (state.inFlightAction) {
+          return;
+        }
+
+        if (action === 'remove') {
+          const confirmed = await promptConfirm(`Remove the ${modelName} model from disk? This will delete the downloaded file.`);
+          if (!confirmed) {
+            return;
+          }
+        }
+
+        state.inFlightAction = action;
+        state.pendingLabel =
+          action === 'use'
+            ? 'Switching…'
+            : action === 'download'
+              ? 'Preparing download…'
+              : action === 'refresh'
+                ? 'Refreshing…'
+                : 'Removing…';
+        state.error = undefined;
+        updateCardUI(modelName);
+
+        try {
+          if (action === 'download') {
+            await invoke('start_model_download', { modelName });
+          } else if (action === 'refresh') {
+            await invoke('refresh_model_download', { modelName });
+          } else if (action === 'remove') {
+            await invoke('remove_model', { modelName });
+          } else if (action === 'use') {
+            await invoke('switch_model', { modelName });
+            localStorage.setItem('selected_model', modelName);
+          }
+
+          await refreshStatuses();
+        } catch (error) {
+          console.error(`Failed to ${action} model ${modelName}:`, error);
+          const message = error instanceof Error ? error.message : String(error);
+          alert(`Failed to ${ACTION_LABELS[action].toLowerCase()} model: ${message}`);
+        } finally {
+          state.inFlightAction = null;
+          state.pendingLabel = null;
+          updateCardUI(modelName);
+        }
+      };
+
+      const setActiveFromEvent = (activeName: string | null) => {
+        modelStates.forEach((state, name) => {
+          state.isActive = activeName !== null && name === activeName;
+          updateCardUI(name);
+        });
+        if (activeName) {
+          localStorage.setItem('selected_model', activeName);
+        }
+      };
+
+      modelCards.forEach(initializeCard);
+
+      const openModelsButton = document.querySelector<HTMLButtonElement>('[data-action="open-models"]');
+      if (openModelsButton) {
+        openModelsButton.addEventListener('click', async () => {
+          try {
+            await invoke('open_models_folder');
+          } catch (error) {
+            console.error('Failed to open models folder:', error);
+            alert('Unable to open models folder.');
+          }
+        });
+      }
+
+      const savedModel = localStorage.getItem('selected_model');
+      if (savedModel) {
+        const state = ensureState(savedModel);
+        state.isActive = true;
+        updateCardUI(savedModel);
+      } else {
+        const defaultCard = document.querySelector<HTMLElement>('.model-card[data-default="true"]');
+        const defaultModel = defaultCard?.dataset.model;
+        if (defaultModel) {
+          const state = ensureState(defaultModel);
+          state.isActive = true;
+          updateCardUI(defaultModel);
+        }
+      }
+
+      void refreshStatuses();
+
+      void listen('model-download-progress', (event) => {
+        const payload = event.payload as DownloadEventPayload;
+        const state = ensureState(payload.modelName);
+
+        switch (payload.status) {
+          case 'queued':
+          case 'refreshing':
+          case 'started':
+            state.isDownloading = true;
+            state.error = undefined;
+            state.downloadedBytes = payload.downloadedBytes ?? 0;
+            state.totalBytes = payload.totalBytes ?? state.totalBytes;
+            state.progressPercent = 0;
+            if (payload.status !== 'refreshing') {
+              state.isDownloaded = false;
+            }
+            break;
+          case 'downloading':
+            state.isDownloading = true;
+            state.error = undefined;
+            state.downloadedBytes = payload.downloadedBytes ?? 0;
+            state.totalBytes = payload.totalBytes ?? state.totalBytes;
+            state.progressPercent = payload.percent ?? computePercent(state.downloadedBytes, state.totalBytes);
+            break;
+          case 'completed':
+            state.isDownloading = false;
+            state.isDownloaded = true;
+            state.error = undefined;
+            state.downloadedBytes = payload.downloadedBytes ?? state.downloadedBytes;
+            state.totalBytes = payload.totalBytes ?? state.totalBytes;
+            state.progressPercent = 100;
+            break;
+          case 'removed':
+            state.isDownloading = false;
+            state.isDownloaded = false;
+            state.error = undefined;
+            state.downloadedBytes = 0;
+            state.totalBytes = null;
+            state.progressPercent = null;
+            break;
+          case 'error':
+            state.isDownloading = false;
+            state.error = payload.error ?? 'Download failed';
+            state.progressPercent = null;
+            break;
+          case 'active':
+            state.isDownloaded = true;
+            state.progressPercent = 100;
+            break;
+          default:
+            break;
+        }
+
+        updateCardUI(payload.modelName);
+
+        if (['completed', 'error', 'removed', 'active'].includes(payload.status)) {
+          void refreshStatuses();
+        }
+      });
+
+      void listen('active-model-changed', (event) => {
+        const payload = event.payload as ActiveModelPayload;
+        const activeName = payload?.modelName ?? null;
+        setActiveFromEvent(activeName);
+      });
     }
   }
 
   // Handle other settings changes (save to localStorage for persistence)
   document.querySelectorAll('.toggle, .select-input').forEach(input => {
-    if (input.id === 'model-selection') return; // Skip model selection, handled above
-
     input.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement | HTMLSelectElement;
       const settingId = target.id;

@@ -1,16 +1,18 @@
-use chrono::Local;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample};
 use enigo::{Enigo, Key, Keyboard, Settings};
 use image::GenericImageView;
 use parking_lot::Mutex;
+use serde::Serialize;
+use std::collections::HashMap;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager,
 };
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
@@ -26,6 +28,80 @@ struct ModelInfo {
     filename: &'static str,
     url: &'static str,
     size_mb: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DownloadStatus {
+    Downloading,
+    Completed,
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+struct DownloadRecord {
+    status: DownloadStatus,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    error: Option<String>,
+}
+
+impl DownloadRecord {
+    fn new(status: DownloadStatus) -> Self {
+        Self {
+            status,
+            downloaded_bytes: 0,
+            total_bytes: None,
+            error: None,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+struct DownloadManager {
+    inner: Arc<Mutex<HashMap<String, DownloadRecord>>>,
+}
+
+#[derive(Default)]
+struct WhisperRuntime {
+    current_model: Option<String>,
+    context: Option<WhisperContext>,
+}
+
+#[derive(Clone, Default)]
+struct WhisperManager {
+    inner: Arc<Mutex<WhisperRuntime>>,
+}
+
+#[derive(Clone, Serialize)]
+struct ModelStatus {
+    name: String,
+    size_mb: u32,
+    is_downloaded: bool,
+    is_downloading: bool,
+    is_active: bool,
+    downloaded_bytes: u64,
+    total_bytes: Option<u64>,
+    error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct DownloadEventPayload {
+    #[serde(rename = "modelName")]
+    model_name: String,
+    #[serde(rename = "downloadedBytes")]
+    downloaded_bytes: u64,
+    #[serde(rename = "totalBytes")]
+    total_bytes: Option<u64>,
+    #[serde(rename = "percent")]
+    percent: Option<f64>,
+    status: &'static str,
+    error: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+struct ActiveModelPayload {
+    #[serde(rename = "modelName")]
+    model_name: Option<String>,
 }
 
 // Available Whisper models - all models from whisper.cpp repository with correct sizes
@@ -54,7 +130,6 @@ fn get_available_models() -> Vec<ModelInfo> {
         ModelInfo { name: "small.en-q5_1", filename: "ggml-small.en-q5_1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q5_1.bin", size_mb: 181 },
         ModelInfo { name: "small-q8_0", filename: "ggml-small-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q8_0.bin", size_mb: 252 },
         ModelInfo { name: "small.en-q8_0", filename: "ggml-small.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-q8_0.bin", size_mb: 252 },
-        ModelInfo { name: "small.en-tdrz", filename: "ggml-small.en-tdrz.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en-tdrz.bin", size_mb: 465 },
 
         // Medium models
         ModelInfo { name: "medium", filename: "ggml-medium.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin", size_mb: 1536 },
@@ -65,10 +140,6 @@ fn get_available_models() -> Vec<ModelInfo> {
         ModelInfo { name: "medium.en-q8_0", filename: "ggml-medium.en-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en-q8_0.bin", size_mb: 785 },
 
         // Large models
-        ModelInfo { name: "large-v1", filename: "ggml-large-v1.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v1.bin", size_mb: 2965 },
-        ModelInfo { name: "large-v2", filename: "ggml-large-v2.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2.bin", size_mb: 2965 },
-        ModelInfo { name: "large-v2-q5_0", filename: "ggml-large-v2-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2-q5_0.bin", size_mb: 1126 },
-        ModelInfo { name: "large-v2-q8_0", filename: "ggml-large-v2-q8_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v2-q8_0.bin", size_mb: 1536 },
         ModelInfo { name: "large-v3", filename: "ggml-large-v3.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin", size_mb: 2965 },
         ModelInfo { name: "large-v3-q5_0", filename: "ggml-large-v3-q5_0.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-q5_0.bin", size_mb: 1126 },
         ModelInfo { name: "large-v3-turbo", filename: "ggml-large-v3-turbo.bin", url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin", size_mb: 1536 },
@@ -77,17 +148,328 @@ fn get_available_models() -> Vec<ModelInfo> {
     ]
 }
 
+fn find_model_info<'a>(model_name: &str) -> Option<ModelInfo> {
+    get_available_models()
+        .into_iter()
+        .find(|m| m.name == model_name)
+}
+
+fn emit_download_event(app: &AppHandle, payload: DownloadEventPayload) {
+    let _ = app.emit("model-download-progress", payload);
+}
+
+fn spawn_model_download(
+    app: &AppHandle,
+    downloads: DownloadManager,
+    whisper: WhisperManager,
+    model_name: String,
+    overwrite: bool,
+) -> Result<(), String> {
+    let model_info = find_model_info(&model_name).ok_or_else(|| "Unknown model name".to_string())?;
+    let model_path = get_model_path_for(app, &model_name);
+
+    if model_path.exists() && !overwrite {
+        return Err("Model already downloaded".to_string());
+    }
+
+    {
+        let mut map = downloads.inner.lock();
+        if let Some(entry) = map.get(&model_name) {
+            if entry.status == DownloadStatus::Downloading {
+                return Err("Download already in progress".to_string());
+            }
+        }
+        map.insert(model_name.clone(), DownloadRecord::new(DownloadStatus::Downloading));
+    }
+
+    emit_download_event(
+        app,
+        DownloadEventPayload {
+            model_name: model_name.clone(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            percent: None,
+            status: if overwrite { "refreshing" } else { "queued" },
+            error: None,
+        },
+    );
+
+    let app_handle = app.clone();
+    let downloads_clone = downloads.clone();
+    let whisper_clone = whisper.clone();
+
+    std::thread::spawn(move || {
+        download_model_task(
+            app_handle,
+            downloads_clone,
+            whisper_clone,
+            model_name,
+            model_info,
+            overwrite,
+        );
+    });
+
+    Ok(())
+}
+
+fn download_model_task(
+    app: AppHandle,
+    downloads: DownloadManager,
+    whisper: WhisperManager,
+    model_name: String,
+    model_info: ModelInfo,
+    overwrite: bool,
+) {
+    let model_path = get_model_path_for(&app, &model_name);
+    let temp_path = model_path.with_extension("download");
+
+    let result: Result<(), Box<dyn std::error::Error>> = (|| {
+        if let Some(parent) = model_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        if temp_path.exists() {
+            let _ = std::fs::remove_file(&temp_path);
+        }
+
+        let mut response = reqwest::blocking::get(model_info.url)?;
+
+        if !response.status().is_success() {
+            return Err(format!("Failed to download model: HTTP {}", response.status()).into());
+        }
+
+        let total_bytes = response.content_length();
+
+        {
+            let mut map = downloads.inner.lock();
+            if let Some(entry) = map.get_mut(&model_name) {
+                entry.status = DownloadStatus::Downloading;
+                entry.downloaded_bytes = 0;
+                entry.total_bytes = total_bytes;
+                entry.error = None;
+            }
+        }
+
+        emit_download_event(
+            &app,
+            DownloadEventPayload {
+                model_name: model_name.clone(),
+                downloaded_bytes: 0,
+                total_bytes,
+                percent: total_bytes.map(|_| 0.0),
+                status: "started",
+                error: None,
+            },
+        );
+
+        let mut file = std::fs::File::create(&temp_path)?;
+        let mut buffer = [0u8; 1024 * 64];
+        let mut downloaded: u64 = 0;
+
+        loop {
+            let bytes_read = response.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+            file.write_all(&buffer[..bytes_read])?;
+            downloaded += bytes_read as u64;
+
+            {
+                let mut map = downloads.inner.lock();
+                if let Some(entry) = map.get_mut(&model_name) {
+                    entry.downloaded_bytes = downloaded;
+                    entry.total_bytes = total_bytes;
+                }
+            }
+
+            let percent = total_bytes.map(|total| {
+                if total == 0 {
+                    0.0
+                } else {
+                    (downloaded as f64 / total as f64) * 100.0
+                }
+            });
+
+            emit_download_event(
+                &app,
+                DownloadEventPayload {
+                    model_name: model_name.clone(),
+                    downloaded_bytes: downloaded,
+                    total_bytes,
+                    percent,
+                    status: "downloading",
+                    error: None,
+                },
+            );
+        }
+
+        file.flush()?;
+        file.sync_all()?;
+
+        if overwrite && model_path.exists() {
+            std::fs::remove_file(&model_path)?;
+        }
+
+        std::fs::rename(&temp_path, &model_path)?;
+
+        Ok(())
+    })();
+
+    match result {
+        Ok(()) => {
+            {
+                let mut map = downloads.inner.lock();
+                if let Some(entry) = map.get_mut(&model_name) {
+                    entry.status = DownloadStatus::Completed;
+                    entry.error = None;
+                }
+            }
+
+                emit_download_event(
+                    &app,
+                    DownloadEventPayload {
+                        model_name: model_name.clone(),
+                        downloaded_bytes: {
+                            let map = downloads.inner.lock();
+                            map.get(&model_name)
+                                .map(|entry| entry.downloaded_bytes)
+                                .unwrap_or(0)
+                        },
+                        total_bytes: {
+                            let map = downloads.inner.lock();
+                            map.get(&model_name)
+                                .and_then(|entry| entry.total_bytes)
+                        },
+                        percent: Some(100.0),
+                        status: "completed",
+                        error: None,
+                    },
+                );
+
+            let should_reload = {
+                let runtime = whisper.inner.lock();
+                runtime
+                    .current_model
+                    .as_ref()
+                    .map(|active| active == &model_name)
+                    .unwrap_or(false)
+            };
+
+            if should_reload {
+                match load_whisper_model_for(&app, &model_name) {
+                    Ok(ctx) => {
+                        let mut runtime = whisper.inner.lock();
+                        runtime.context = Some(ctx);
+                        runtime.current_model = Some(model_name.clone());
+                        let _ = app.emit(
+                            "active-model-changed",
+                            ActiveModelPayload {
+                                model_name: Some(model_name.clone()),
+                            },
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to reload Whisper model after refresh: {}", e);
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            let message = err.to_string();
+            {
+                let mut map = downloads.inner.lock();
+                if let Some(entry) = map.get_mut(&model_name) {
+                    entry.status = DownloadStatus::Failed;
+                    entry.error = Some(message.clone());
+                }
+            }
+
+            let _ = std::fs::remove_file(&temp_path);
+
+            emit_download_event(
+                &app,
+                DownloadEventPayload {
+                    model_name: model_name.clone(),
+                    downloaded_bytes: {
+                        let map = downloads.inner.lock();
+                        map.get(&model_name)
+                            .map(|entry| entry.downloaded_bytes)
+                            .unwrap_or(0)
+                    },
+                    total_bytes: {
+                        let map = downloads.inner.lock();
+                        map.get(&model_name)
+                            .and_then(|entry| entry.total_bytes)
+                    },
+                    percent: None,
+                    status: "error",
+                    error: Some(message),
+                },
+            );
+        }
+    }
+}
+
+fn gather_model_statuses(
+    app: &AppHandle,
+    downloads: &DownloadManager,
+    whisper: &WhisperManager,
+) -> Vec<ModelStatus> {
+    let active_model = {
+        let runtime = whisper.inner.lock();
+        runtime.current_model.clone()
+    };
+
+    let download_snapshot = downloads.inner.lock().clone();
+
+    get_available_models()
+        .into_iter()
+        .map(|model| {
+            let model_name = model.name.to_string();
+            let record = download_snapshot.get(&model_name);
+            let is_downloaded = model_exists_for(app, &model_name);
+            let is_downloading = record
+                .map(|entry| entry.status == DownloadStatus::Downloading)
+                .unwrap_or(false);
+            let is_active = active_model
+                .as_ref()
+                .map(|current| current == &model_name)
+                .unwrap_or(false);
+
+            let (downloaded_bytes, total_bytes) = if let Some(entry) = record {
+                (entry.downloaded_bytes, entry.total_bytes)
+            } else if is_downloaded {
+                match std::fs::metadata(get_model_path_for(app, &model_name)) {
+                    Ok(meta) => {
+                        let len = meta.len();
+                        (len, Some(len))
+                    }
+                    Err(_) => (0, None),
+                }
+            } else {
+                (0, None)
+            };
+
+            ModelStatus {
+                name: model_name,
+                size_mb: model.size_mb,
+                is_downloaded,
+                is_downloading,
+                is_active,
+                downloaded_bytes,
+                total_bytes,
+                error: record.and_then(|entry| entry.error.clone()),
+            }
+        })
+        .collect()
+}
+
 // Get default model name
 const DEFAULT_MODEL: &str = "tiny.en-q5_1";
 
 // Get the model file path for a specific model
 fn get_model_path_for(app: &AppHandle, model_name: &str) -> PathBuf {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .expect("Failed to get app data dir");
-    let models_dir = app_data_dir.join("models");
-    std::fs::create_dir_all(&models_dir).ok();
+    let models_dir = get_model_base_path(app).expect("Failed to get model base path");
 
     // Find the model info
     let model_info = get_available_models()
@@ -98,65 +480,20 @@ fn get_model_path_for(app: &AppHandle, model_name: &str) -> PathBuf {
     models_dir.join(model_info.filename)
 }
 
-// Get default model path (for backward compatibility)
-fn get_model_path(app: &AppHandle) -> PathBuf {
-    get_model_path_for(app, DEFAULT_MODEL)
+fn get_model_base_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Failed to get app data dir".to_string())?;
+    let models_dir = app_data_dir.join("models");
+    std::fs::create_dir_all(&models_dir)
+        .map_err(|e| format!("Failed to create models directory: {}", e))?;
+    Ok(models_dir)
 }
 
 // Check if a specific model exists
 fn model_exists_for(app: &AppHandle, model_name: &str) -> bool {
     get_model_path_for(app, model_name).exists()
-}
-
-// Check if default model exists
-fn model_exists(app: &AppHandle) -> bool {
-    model_exists_for(app, DEFAULT_MODEL)
-}
-
-// Download a specific Whisper model from HuggingFace
-fn download_model_by_name(app: &AppHandle, model_name: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // Find the model info
-    let model_info = get_available_models()
-        .into_iter()
-        .find(|m| m.name == model_name)
-        .ok_or("Unknown model name")?;
-
-    let model_path = get_model_path_for(app, model_name);
-
-    // Create models directory if it doesn't exist
-    if let Some(parent) = model_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    println!("Downloading Whisper {} model (~{}MB)...", model_info.name, model_info.size_mb);
-
-    // Download from HuggingFace
-    let url = model_info.url;
-
-    let mut response = reqwest::blocking::get(url)?;
-
-    if !response.status().is_success() {
-        return Err(format!("Failed to download model: HTTP {}", response.status()).into());
-    }
-
-    // Stream directly to temporary file
-    let temp_path = model_path.with_extension("bin.tmp");
-    let mut file = std::fs::File::create(&temp_path)?;
-
-    println!("Downloading model, streaming to disk...");
-    let bytes_written = std::io::copy(&mut response, &mut file)?;
-    println!("Downloaded {} MB", bytes_written / 1024 / 1024);
-
-    // Rename temp file to final name (atomic operation)
-    std::fs::rename(&temp_path, &model_path)?;
-
-    println!("Model downloaded successfully to: {:?}", model_path);
-    Ok(())
-}
-
-// Download default model (for backward compatibility)
-fn download_model(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    download_model_by_name(app, DEFAULT_MODEL)
 }
 
 // Transcribe audio using Whisper model
@@ -213,8 +550,11 @@ fn transcribe_audio(
 }
 
 // Load Whisper model (with Metal GPU support)
-fn load_whisper_model(app: &AppHandle) -> Result<WhisperContext, Box<dyn std::error::Error>> {
-    let model_path = get_model_path(app);
+fn load_whisper_model_for(
+    app: &AppHandle,
+    model_name: &str,
+) -> Result<WhisperContext, Box<dyn std::error::Error>> {
+    let model_path = get_model_path_for(app, model_name);
 
     if !model_path.exists() {
         return Err("Model not found. Please download the model first.".into());
@@ -351,9 +691,6 @@ impl AudioRecorder {
         audio_data
     }
 
-    fn get_sample_rate(&self) -> u32 {
-        self.sample_rate
-    }
 }
 
 fn build_input_stream<T>(
@@ -436,37 +773,6 @@ fn insert_text_at_cursor(app: &AppHandle, text: &str) -> Result<(), Box<dyn std:
     Ok(())
 }
 
-// Tauri command to switch Whisper model
-#[tauri::command]
-async fn switch_model(
-    app: tauri::AppHandle,
-    model_name: String,
-) -> Result<String, String> {
-    // Check if model exists, download if not
-    if !model_exists_for(&app, &model_name) {
-        println!("Model {} not found, downloading...", model_name);
-        download_model_by_name(&app, &model_name)
-            .map_err(|e| format!("Failed to download model: {}", e))?;
-    }
-
-    // Load the new model
-    let model_path = get_model_path_for(&app, &model_name);
-    println!("Loading model from: {:?}", model_path);
-
-    let params = WhisperContextParameters::default();
-    let ctx = WhisperContext::new_with_params(
-        model_path.to_str().ok_or("Invalid model path")?,
-        params
-    ).map_err(|e| format!("Failed to load model: {}", e))?;
-
-    // Replace the current model in app state
-    let whisper_state: tauri::State<Arc<Mutex<Option<WhisperContext>>>> = app.state();
-    *whisper_state.lock() = Some(ctx);
-
-    println!("Successfully switched to model: {}", model_name);
-    Ok(format!("Model {} loaded successfully", model_name))
-}
-
 // Tauri command to get list of downloaded models
 #[tauri::command]
 fn get_downloaded_models(app: tauri::AppHandle) -> Vec<String> {
@@ -475,6 +781,233 @@ fn get_downloaded_models(app: tauri::AppHandle) -> Vec<String> {
         .filter(|model| model_exists_for(&app, model.name))
         .map(|model| model.name.to_string())
         .collect()
+}
+
+#[tauri::command]
+fn get_model_statuses(
+    app: tauri::AppHandle,
+    downloads: tauri::State<'_, DownloadManager>,
+    whisper: tauri::State<'_, WhisperManager>,
+) -> Vec<ModelStatus> {
+    gather_model_statuses(&app, downloads.inner(), whisper.inner())
+}
+
+#[tauri::command]
+fn start_model_download(
+    app: tauri::AppHandle,
+    downloads: tauri::State<'_, DownloadManager>,
+    whisper: tauri::State<'_, WhisperManager>,
+    model_name: String,
+) -> Result<(), String> {
+    spawn_model_download(
+        &app,
+        downloads.inner().clone(),
+        whisper.inner().clone(),
+        model_name,
+        false,
+    )
+}
+
+#[tauri::command]
+fn refresh_model_download(
+    app: tauri::AppHandle,
+    downloads: tauri::State<'_, DownloadManager>,
+    whisper: tauri::State<'_, WhisperManager>,
+    model_name: String,
+) -> Result<(), String> {
+    // Prevent refresh while download already in progress
+    {
+        let map = downloads.inner().inner.lock();
+        if let Some(entry) = map.get(&model_name) {
+            if entry.status == DownloadStatus::Downloading {
+                return Err("Download already in progress".to_string());
+            }
+        }
+    }
+
+    spawn_model_download(
+        &app,
+        downloads.inner().clone(),
+        whisper.inner().clone(),
+        model_name,
+        true,
+    )
+}
+
+#[tauri::command]
+fn remove_model(
+    app: tauri::AppHandle,
+    downloads: tauri::State<'_, DownloadManager>,
+    whisper: tauri::State<'_, WhisperManager>,
+    model_name: String,
+) -> Result<(), String> {
+    let is_active = {
+        let runtime = whisper.inner().inner.lock();
+        runtime
+            .current_model
+            .as_ref()
+            .map(|current| current == &model_name)
+            .unwrap_or(false)
+    };
+
+    if is_active {
+        return Err("Model is currently active. Switch to another model before removing.".to_string());
+    }
+
+    {
+        let map = downloads.inner().inner.lock();
+        if let Some(entry) = map.get(&model_name) {
+            if entry.status == DownloadStatus::Downloading {
+                return Err("Download in progress. Please wait for it to finish.".to_string());
+            }
+        }
+    }
+
+    let model_path = get_model_path_for(&app, &model_name);
+    if model_path.exists() {
+        std::fs::remove_file(&model_path)
+            .map_err(|e| format!("Failed to remove model: {}", e))?;
+    } else {
+        return Err("Model file not found.".to_string());
+    }
+
+    {
+        let mut map = downloads.inner().inner.lock();
+        map.remove(&model_name);
+    }
+
+    emit_download_event(
+        &app,
+        DownloadEventPayload {
+            model_name: model_name.clone(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            percent: None,
+            status: "removed",
+            error: None,
+        },
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+fn open_models_folder(app: tauri::AppHandle) -> Result<(), String> {
+    let path = get_model_base_path(&app)?;
+
+    #[cfg(target_os = "macos")]
+    {
+        let status = std::process::Command::new("open")
+            .arg(&path)
+            .status()
+            .map_err(|e| format!("Failed to open models directory: {}", e))?;
+        if !status.success() {
+            return Err("Failed to open models directory".into());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| "Invalid models directory path".to_string())?;
+        let status = std::process::Command::new("explorer")
+            .arg(path_str)
+            .status()
+            .map_err(|e| format!("Failed to open models directory: {}", e))?;
+        if !status.success() {
+            return Err("Failed to open models directory".into());
+        }
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        let status = std::process::Command::new("xdg-open")
+            .arg(&path)
+            .status()
+            .map_err(|e| format!("Failed to open models directory: {}", e))?;
+        if !status.success() {
+            return Err("Failed to open models directory".into());
+        }
+    }
+
+    Ok(())
+}
+
+// Tauri command to switch Whisper model
+#[tauri::command]
+async fn switch_model(
+    app: tauri::AppHandle,
+    downloads: tauri::State<'_, DownloadManager>,
+    whisper: tauri::State<'_, WhisperManager>,
+    model_name: String,
+) -> Result<String, String> {
+    {
+        let map = downloads.inner().inner.lock();
+        if let Some(entry) = map.get(&model_name) {
+            if entry.status == DownloadStatus::Downloading {
+                return Err("Model is still downloading.".to_string());
+            }
+        }
+    }
+
+    if !model_exists_for(&app, &model_name) {
+        return Err("Model not downloaded.".to_string());
+    }
+
+    let ctx = load_whisper_model_for(&app, &model_name).map_err(|e| e.to_string())?;
+
+    {
+        let mut runtime = whisper.inner().inner.lock();
+        runtime.context = Some(ctx);
+        runtime.current_model = Some(model_name.clone());
+    }
+
+    {
+        let mut map = downloads.inner().inner.lock();
+        if let Some(entry) = map.get_mut(&model_name) {
+            entry.status = DownloadStatus::Completed;
+            entry.error = None;
+            if entry.total_bytes.is_none() {
+                if let Ok(meta) = std::fs::metadata(get_model_path_for(&app, &model_name)) {
+                    let len = meta.len();
+                    entry.total_bytes = Some(len);
+                    entry.downloaded_bytes = len;
+                }
+            }
+        }
+    }
+
+    emit_download_event(
+        &app,
+        DownloadEventPayload {
+            model_name: model_name.clone(),
+            downloaded_bytes: {
+                let map = downloads.inner().inner.lock();
+                map.get(&model_name)
+                    .map(|entry| entry.downloaded_bytes)
+                    .unwrap_or(0)
+            },
+            total_bytes: {
+                let map = downloads.inner().inner.lock();
+                map.get(&model_name)
+                    .and_then(|entry| entry.total_bytes)
+            },
+            percent: Some(100.0),
+            status: "active",
+            error: None,
+        },
+    );
+
+    let _ = app.emit(
+        "active-model-changed",
+        ActiveModelPayload {
+            model_name: Some(model_name.clone()),
+        },
+    );
+
+    println!("Successfully switched to model: {}", model_name);
+    Ok(format!("Model {} loaded successfully", model_name))
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -510,9 +1043,13 @@ pub fn run() {
     let audio_recorder = Arc::new(Mutex::new(AudioRecorder::new()));
     let audio_recorder_clone = audio_recorder.clone();
 
+    let download_manager = DownloadManager::default();
+    let whisper_manager = WhisperManager::default();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_shortcuts(["alt+space"])
@@ -543,7 +1080,6 @@ pub fn run() {
                                     // Stop audio capture and get buffered audio
                                     let mut recorder = audio_recorder_clone.lock();
                                     let audio_samples = recorder.stop();
-                                    let sample_rate = recorder.get_sample_rate();
                                     println!("Option+Space released - recording stopped");
 
                                     // Calculate audio duration in seconds
@@ -554,11 +1090,10 @@ pub fn run() {
                                     };
 
                                     // Transcribe audio using Whisper
-                                    let whisper_state: tauri::State<
-                                        Arc<Mutex<Option<WhisperContext>>>,
-                                    > = app.state();
-                                    let transcription =
-                                        if let Some(ctx) = whisper_state.lock().as_mut() {
+                                    let whisper_state: tauri::State<WhisperManager> = app.state();
+                                    let transcription = {
+                                        let mut runtime = whisper_state.inner().inner.lock();
+                                        if let Some(ctx) = runtime.context.as_mut() {
                                             match transcribe_audio(ctx, &audio_samples) {
                                                 Ok(text) => text,
                                                 Err(e) => {
@@ -568,7 +1103,8 @@ pub fn run() {
                                             }
                                         } else {
                                             String::from("[Model not loaded]")
-                                        };
+                                        }
+                                    };
 
                                     // Insert transcribed text only if not empty
                                     if !transcription.is_empty()
@@ -588,56 +1124,83 @@ pub fn run() {
                 })
                 .build(),
         )
-        .manage(Arc::new(Mutex::new(None::<WhisperContext>))) // Whisper model state
-        .invoke_handler(tauri::generate_handler![greet, switch_model, get_downloaded_models])
+        .manage(download_manager.clone())
+        .manage(whisper_manager.clone())
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            switch_model,
+            get_downloaded_models,
+            get_model_statuses,
+            start_model_download,
+            refresh_model_download,
+            remove_model,
+            open_models_folder
+        ])
         .setup(|app| {
             // Hide from dock on macOS
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Check if Whisper model exists, download if missing
-            let model_ready = if !model_exists(app.handle()) {
-                println!(
-                    "Whisper model not found at: {:?}",
-                    get_model_path(app.handle())
-                );
-                println!("Starting model download in background...");
+            let download_state: tauri::State<DownloadManager> = app.state();
+            let whisper_state: tauri::State<WhisperManager> = app.state();
+            let app_handle = app.handle();
 
-                // Spawn download in background thread
-                let app_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    match download_model(&app_handle) {
-                        Ok(_) => {
-                            println!("Model download complete! Loading model...");
-                            // Try to load the model after download
-                            match load_whisper_model(&app_handle) {
-                                Ok(ctx) => {
-                                    let whisper_state: tauri::State<
-                                        Arc<Mutex<Option<WhisperContext>>>,
-                                    > = app_handle.state();
-                                    *whisper_state.lock() = Some(ctx);
-                                    println!(
-                                        "Whisper model initialized successfully after download"
-                                    );
-                                }
-                                Err(e) => {
-                                    eprintln!("Failed to load Whisper model after download: {}", e);
-                                }
+            let default_model_name = DEFAULT_MODEL.to_string();
+            let default_path = get_model_path_for(&app_handle, DEFAULT_MODEL);
+            let default_exists = default_path.exists();
+
+            let model_ready = if default_exists {
+                println!("Whisper model found, loading...");
+                match load_whisper_model_for(&app_handle, DEFAULT_MODEL) {
+                    Ok(ctx) => {
+                        {
+                            let mut runtime = whisper_state.inner().inner.lock();
+                            runtime.context = Some(ctx);
+                            runtime.current_model = Some(default_model_name.clone());
+                        }
+
+                        {
+                            let mut map = download_state.inner().inner.lock();
+                            let entry = map
+                                .entry(default_model_name.clone())
+                                .or_insert_with(|| DownloadRecord::new(DownloadStatus::Completed));
+                            entry.status = DownloadStatus::Completed;
+                            entry.error = None;
+                            if let Ok(meta) = std::fs::metadata(&default_path) {
+                                let len = meta.len();
+                                entry.downloaded_bytes = len;
+                                entry.total_bytes = Some(len);
                             }
                         }
-                        Err(e) => {
-                            eprintln!("Failed to download Whisper model: {}", e);
-                        }
-                    }
-                });
-                false
-            } else {
-                println!("Whisper model found, loading...");
-                match load_whisper_model(app.handle()) {
-                    Ok(ctx) => {
-                        let whisper_state: tauri::State<Arc<Mutex<Option<WhisperContext>>>> =
-                            app.state();
-                        *whisper_state.lock() = Some(ctx);
+
+                        emit_download_event(
+                            &app_handle,
+                            DownloadEventPayload {
+                                model_name: default_model_name.clone(),
+                                downloaded_bytes: {
+                                    let map = download_state.inner().inner.lock();
+                                    map.get(&default_model_name)
+                                        .map(|entry| entry.downloaded_bytes)
+                                        .unwrap_or(0)
+                                },
+                                total_bytes: {
+                                    let map = download_state.inner().inner.lock();
+                                    map.get(&default_model_name)
+                                        .and_then(|entry| entry.total_bytes)
+                                },
+                                percent: Some(100.0),
+                                status: "active",
+                                error: None,
+                            },
+                        );
+
+                        let _ = app_handle.emit(
+                            "active-model-changed",
+                            ActiveModelPayload {
+                                model_name: Some(default_model_name.clone()),
+                            },
+                        );
+
                         println!("Whisper model initialized successfully");
                         true
                     }
@@ -646,6 +1209,29 @@ pub fn run() {
                         false
                     }
                 }
+            } else {
+                println!(
+                    "Whisper model not found at: {:?}. Starting download...",
+                    default_path
+                );
+
+                {
+                    let mut runtime = whisper_state.inner().inner.lock();
+                    runtime.current_model = Some(default_model_name.clone());
+                    runtime.context = None;
+                }
+
+                if let Err(err) = spawn_model_download(
+                    &app_handle,
+                    download_state.inner().clone(),
+                    whisper_state.inner().clone(),
+                    default_model_name.clone(),
+                    false,
+                ) {
+                    eprintln!("Failed to start default model download: {}", err);
+                }
+
+                false
             };
 
             println!("Model ready: {}", model_ready);
