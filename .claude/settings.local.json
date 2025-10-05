@@ -9,7 +9,9 @@
       "WebSearch",
       "Bash(cat:*)",
       "Bash(cargo search:*)",
-      "Read(//Users/g/.cargo/registry/src/**)"
+      "Read(//Users/g/.cargo/registry/src/**)",
+      "Bash(test:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

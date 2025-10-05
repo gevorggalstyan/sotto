@@ -500,6 +500,7 @@ fn model_exists_for(app: &AppHandle, model_name: &str) -> bool {
 fn transcribe_audio(
     ctx: &mut WhisperContext,
     audio_data: &[f32],
+    model_name: &str,
 ) -> Result<String, Box<dyn std::error::Error>> {
     if audio_data.is_empty() {
         return Ok(String::new());
@@ -515,7 +516,14 @@ fn transcribe_audio(
 
     // Create transcription parameters optimized for speed
     let mut params = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
-    params.set_language(Some("en")); // English - skips auto-detection
+    // Only set language to English for English-only models (.en variants)
+    // Multilingual models will auto-detect the language
+    if model_name.contains(".en") {
+        params.set_language(Some("en"));
+        println!("Using English-only model - language set to 'en'");
+    } else {
+        println!("Using multilingual model - language auto-detection enabled");
+    }
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
@@ -1096,8 +1104,9 @@ pub fn run() {
                                     let whisper_state: tauri::State<WhisperManager> = app.state();
                                     let transcription = {
                                         let mut runtime = whisper_state.inner().inner.lock();
+                                        let model_name = runtime.current_model.clone().unwrap_or_default();
                                         if let Some(ctx) = runtime.context.as_mut() {
-                                            match transcribe_audio(ctx, &audio_samples) {
+                                            match transcribe_audio(ctx, &audio_samples, &model_name) {
                                                 Ok(text) => text,
                                                 Err(e) => {
                                                     eprintln!("Transcription failed: {}", e);
