@@ -11,7 +11,21 @@
       "Bash(cargo search:*)",
       "Read(//Users/g/.cargo/registry/src/**)",
       "Bash(test:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(cargo clean:*)",
+      "Bash(export MACOSX_DEPLOYMENT_TARGET=10.15)",
+      "Bash(/Users/g/Projects/sotto/src-tauri/target/release/bundle/macos/Sotto.app/Contents/MacOS/Sotto)",
+      "Bash(open:*)",
+      "Bash(log show:*)",
+      "Read(//Library/Developer/CommandLineTools/**)",
+      "Bash(nm:*)",
+      "Bash(killall:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd support for dual hotkey combinations\n\nAdds Ctrl+Option+Space as an alternative hotkey alongside the existing Option+Space, both triggering the same voice recording functionality.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
