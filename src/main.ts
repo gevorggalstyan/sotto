@@ -1,4 +1,4 @@
-import { createIcons, Settings, Info, Mic2, Wrench, Mic, Keyboard, Download, Zap } from 'lucide';
+import { createIcons, Settings, Info, Mic2, Wrench, Mic, Keyboard, Download, Zap, Star } from 'lucide';
 
 // Tab navigation functionality
 function switchTab(tabId: string) {
@@ -38,7 +38,8 @@ window.addEventListener("DOMContentLoaded", () => {
       Mic,
       Keyboard,
       Download,
-      Zap
+      Zap,
+      Star
     }
   });
 
