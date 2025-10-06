@@ -2,6 +2,20 @@
 
 Open-source voice transcription app for macOS.
 
+## Installation
+
+### Homebrew (Recommended)
+
+```bash
+brew install gevorggalstyan/tap/sotto
+```
+
+### Manual Installation
+
+1. Download the latest DMG from [Releases](https://github.com/gevorggalstyan/sotto/releases)
+2. Open the DMG and drag Sotto.app to your Applications folder
+3. Launch Sotto from Applications
+
 ## What is Sotto?
 
 Sotto is a lightweight, system-wide voice transcription tool that runs in your macOS menu bar. It allows you to transcribe speech to text anywhere on your system using simple keyboard shortcuts.
