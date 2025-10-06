@@ -146,3 +146,47 @@ Follow conventional commit style:
 - **Keep commits clean**: Write standard, professional commit messages
 - **Be descriptive**: Explain what changed and why
 - **Use imperative mood**: "Add feature" not "Added feature"
+
+## Release Process
+
+When creating a new release:
+
+1. **Update version numbers** in all files:
+   - `package.json`
+   - `src-tauri/Cargo.toml`
+   - `src-tauri/tauri.conf.json`
+   - `index.html` (About page version display)
+
+2. **Build the DMG installer**:
+   ```bash
+   npm run build:dmg
+   ```
+
+3. **Create GitHub Release**:
+   ```bash
+   gh release create vX.Y.Z \
+     --title "vX.Y.Z" \
+     --notes "Release notes here" \
+     path/to/Sotto_X.Y.Z_aarch64.dmg
+   ```
+
+4. **Update Homebrew tap** (`homebrew-tap` repository):
+   - Get SHA256 of the DMG: `shasum -a 256 Sotto_X.Y.Z_aarch64.dmg`
+   - Update `Casks/sotto.rb`:
+     - Change `version` to new version
+     - Update `sha256` with new checksum
+     - Verify `url` uses `#{version}` variable correctly
+   - Commit and push changes
+
+5. **Test installation**:
+   ```bash
+   brew uninstall sotto
+   brew install gevorggalstyan/tap/sotto
+   ```
+
+### Version Files Checklist
+Always update these files together when changing version:
+- [ ] `package.json`
+- [ ] `src-tauri/Cargo.toml`
+- [ ] `src-tauri/tauri.conf.json`
+- [ ] `index.html` (version display)
