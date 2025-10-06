@@ -1,6 +1,8 @@
-# Sotto
-
-Open-source voice transcription app for macOS.
+<div align="center">
+  <img src="src-tauri/icons/Sotto Logo.png" alt="Sotto Logo" width="128" height="128">
+  <h1>Sotto</h1>
+  <p>Open-source voice transcription app for macOS.</p>
+</div>
 
 ## Installation
 
