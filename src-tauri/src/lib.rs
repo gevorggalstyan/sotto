@@ -1295,6 +1295,45 @@ pub fn run() {
                 });
             }
 
+            // Start periodic model check to ensure recommended model is always available
+            let app_handle_for_check = app_handle.clone();
+            let download_state_for_check = download_state.inner().clone();
+            let whisper_state_for_check = whisper_state.inner().clone();
+            std::thread::spawn(move || {
+                loop {
+                    std::thread::sleep(std::time::Duration::from_secs(30));
+
+                    let default_path = get_model_path_for(&app_handle_for_check, DEFAULT_MODEL);
+
+                    // Check if default model exists
+                    if !default_path.exists() {
+                        println!("Recommended model missing, starting automatic download...");
+
+                        // Check if not already downloading
+                        let already_downloading = {
+                            let map = download_state_for_check.inner.lock();
+                            map.get(DEFAULT_MODEL)
+                                .map(|entry| entry.status == DownloadStatus::Downloading)
+                                .unwrap_or(false)
+                        };
+
+                        if !already_downloading {
+                            if let Err(err) = spawn_model_download(
+                                &app_handle_for_check,
+                                download_state_for_check.clone(),
+                                whisper_state_for_check.clone(),
+                                DEFAULT_MODEL.to_string(),
+                                false,
+                            ) {
+                                eprintln!("Failed to auto-download missing model: {}", err);
+                            } else {
+                                println!("Automatic download of recommended model started");
+                            }
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
