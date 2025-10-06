@@ -29,9 +29,11 @@ The name "Sotto" comes from the Italian musical term "sotto voce," meaning "unde
 - **System-wide accessibility**: Works in any application across macOS
 - **Multiple hotkey support**: Use either `Option+Space` or `Ctrl+Option+Space` to trigger recording
 - **Local transcription**: Uses Whisper AI models running locally on your Mac with Metal GPU acceleration
+- **Privacy first**: All processing happens on-device. No data is sent to the cloud.
 - **Multiple model options**: Choose from various Whisper models (tiny, base, small, medium, large) with different speed/accuracy trade-offs
 - **Multilingual support**: Models without ".en" suffix support transcription from multiple languages, automatically translating to English
 - **Automatic text insertion**: Transcribed text is automatically inserted at your cursor position
+- **Automatic model recovery**: Periodic background checks ensure the recommended model is always available
 - **Menu bar integration**: Lives in your menu bar for easy access to settings
 
 ## How It Works
@@ -64,9 +66,10 @@ Models are available in both multilingual and English-only (.en) variants, as we
 
 ## Requirements
 
-- macOS (with Metal GPU support for optimal performance)
-- Microphone access permission
-- Accessibility permissions (for automatic text insertion)
+- macOS Big Sur (11.0) or later
+- Apple Silicon (M1/M2/M3/M4) Mac
+- Microphone access permission (app will request on first use)
+- Accessibility permissions (app will request on first use for text insertion)
 
 ## Technical Stack
 
@@ -97,6 +100,14 @@ npm run build:app
 npm run build:dmg
 ```
 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 ## License
 
-Open source - see repository for license details.
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Author
+
+Created by [Gevorg Galstyan](https://galstyan.am)

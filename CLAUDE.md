@@ -45,8 +45,9 @@ Sotto uses **Tauri 2** - a Rust + TypeScript hybrid app:
 - Text insertion: Uses clipboard manipulation + keyboard simulation (enigo) to paste transcribed text
 
 **Frontend (`src/main.ts`)**
-- Tab-based settings UI (Models, About)
+- Tab-based settings UI (General, Troubleshooting, About)
 - Model catalog: Cards for each available Whisper model with download/use/refresh/remove actions
+- Star icon indicates recommended default model
 - Real-time download progress via Tauri events (`model-download-progress`, `active-model-changed`)
 - State synchronization: Polls backend for model statuses, updates UI accordingly
 
@@ -67,6 +68,7 @@ Sotto uses **Tauri 2** - a Rust + TypeScript hybrid app:
 - **On-demand downloads**: Models downloaded from HuggingFace on first use or via settings UI
 - **Active model**: Stored in `WhisperManager`, persisted to localStorage in frontend
 - **Default model**: `tiny.en-q5_1` (fast, small, English-only)
+- **Automatic recovery**: Background thread checks every 30 seconds if recommended model exists; auto-downloads if missing
 
 ### Audio Pipeline
 
@@ -96,10 +98,13 @@ Backend exposes these IPC commands to frontend:
 ## Important Notes
 
 - **macOS-specific**: Uses Metal GPU for Whisper, macOS-specific tray icons and activation policy
+- **Apple Silicon only**: Built for arm64 architecture (M1/M2/M3/M4 Macs)
+- **Minimum macOS**: Big Sur (11.0) or later
 - **Permissions required**: Microphone access (for recording), Accessibility (for text insertion via keyboard simulation)
 - **Window behavior**: Main window hidden by default (menu bar app), shows on "Settings" menu click
 - **Clipboard handling**: Saves/restores clipboard around paste operation to avoid data loss
 - **Error handling**: Transcription failures (empty audio, model errors) don't insert text, log errors instead
+- **Dependencies**: cpal 0.16 (audio), enigo 0.6 (keyboard), whisper-rs 0.15 (AI), Tauri 2.8 (framework)
 
 ## Git Commit and Versioning Guidelines
 
@@ -190,3 +195,19 @@ Always update these files together when changing version:
 - [ ] `src-tauri/Cargo.toml`
 - [ ] `src-tauri/tauri.conf.json`
 - [ ] `index.html` (version display)
+
+## Distribution
+
+### Homebrew Tap
+The app is distributed via a custom Homebrew tap at `gevorggalstyan/homebrew-tap`.
+
+**Repository**: https://github.com/gevorggalstyan/homebrew-tap
+**Installation**: `brew install gevorggalstyan/tap/sotto`
+
+The Cask formula (`Casks/sotto.rb`) includes:
+- Version and SHA256 checksum
+- Download URL pointing to GitHub Releases
+- `postflight` script to remove quarantine attribute (unsigned app workaround)
+- Zap trash locations for clean uninstall
+
+**Note**: The app is currently unsigned and not notarized. Users installing manually will need to remove the quarantine attribute or right-click > Open the first time.
