@@ -13,10 +13,16 @@ function switchTab(tabId: string) {
   // Add active class to clicked nav item and corresponding tab content
   const navItem = document.querySelector(`[data-tab="${tabId}"]`);
   const tabContent = document.getElementById(tabId);
-  
+
   if (navItem && tabContent) {
     navItem.classList.add('active');
     tabContent.classList.add('active');
+  }
+
+  // Reset scroll position to top
+  const settingsPanel = document.querySelector('.settings-panel');
+  if (settingsPanel) {
+    settingsPanel.scrollTop = 0;
   }
 }
 
