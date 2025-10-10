@@ -3,8 +3,9 @@ use cpal::{FromSample, Sample};
 use enigo::{Enigo, Key, Keyboard, Settings};
 use image::GenericImageView;
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -104,6 +105,69 @@ struct ActiveModelPayload {
     model_name: Option<String>,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct AppConfig {
+    selected_model: Option<String>,
+}
+
+fn get_config_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let base_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|_| "Failed to get app data dir".to_string())?;
+    fs::create_dir_all(&base_dir)
+        .map_err(|e| format!("Failed to create app data directory: {}", e))?;
+    Ok(base_dir.join("settings.json"))
+}
+
+fn load_app_config(app: &AppHandle) -> Result<AppConfig, String> {
+    let path = get_config_path(app)?;
+    if !path.exists() {
+        return Ok(AppConfig::default());
+    }
+    let contents =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read app config: {}", e))?;
+    serde_json::from_str(&contents).map_err(|e| format!("Failed to parse app config: {}", e))
+}
+
+fn save_app_config(app: &AppHandle, config: &AppConfig) -> Result<(), String> {
+    let path = get_config_path(app)?;
+    let serialized = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&path, serialized).map_err(|e| format!("Failed to write app config: {}", e))
+}
+
+fn load_selected_model(app: &AppHandle) -> Option<String> {
+    match load_app_config(app) {
+        Ok(config) => config.selected_model.and_then(|name| {
+            if find_model_info(&name).is_some() {
+                Some(name)
+            } else {
+                eprintln!(
+                    "Stored model '{}' is not recognized; falling back to default.",
+                    name
+                );
+                None
+            }
+        }),
+        Err(err) => {
+            eprintln!("Failed to load app config: {}", err);
+            None
+        }
+    }
+}
+
+fn persist_selected_model(app: &AppHandle, model_name: &str) {
+    let mut config = load_app_config(app).unwrap_or_else(|err| {
+        eprintln!("Failed to load existing app config: {}", err);
+        AppConfig::default()
+    });
+    config.selected_model = Some(model_name.to_string());
+    if let Err(err) = save_app_config(app, &config) {
+        eprintln!("Failed to persist selected model '{}': {}", model_name, err);
+    }
+}
+
 // Available Whisper models - all models from whisper.cpp repository with correct sizes
 fn get_available_models() -> Vec<ModelInfo> {
     vec![
@@ -165,7 +229,8 @@ fn spawn_model_download(
     model_name: String,
     overwrite: bool,
 ) -> Result<(), String> {
-    let model_info = find_model_info(&model_name).ok_or_else(|| "Unknown model name".to_string())?;
+    let model_info =
+        find_model_info(&model_name).ok_or_else(|| "Unknown model name".to_string())?;
     let model_path = get_model_path_for(app, &model_name);
 
     if model_path.exists() && !overwrite {
@@ -179,7 +244,10 @@ fn spawn_model_download(
                 return Err("Download already in progress".to_string());
             }
         }
-        map.insert(model_name.clone(), DownloadRecord::new(DownloadStatus::Downloading));
+        map.insert(
+            model_name.clone(),
+            DownloadRecord::new(DownloadStatus::Downloading),
+        );
     }
 
     emit_download_event(
@@ -325,26 +393,25 @@ fn download_model_task(
                 }
             }
 
-                emit_download_event(
-                    &app,
-                    DownloadEventPayload {
-                        model_name: model_name.clone(),
-                        downloaded_bytes: {
-                            let map = downloads.inner.lock();
-                            map.get(&model_name)
-                                .map(|entry| entry.downloaded_bytes)
-                                .unwrap_or(0)
-                        },
-                        total_bytes: {
-                            let map = downloads.inner.lock();
-                            map.get(&model_name)
-                                .and_then(|entry| entry.total_bytes)
-                        },
-                        percent: Some(100.0),
-                        status: "completed",
-                        error: None,
+            emit_download_event(
+                &app,
+                DownloadEventPayload {
+                    model_name: model_name.clone(),
+                    downloaded_bytes: {
+                        let map = downloads.inner.lock();
+                        map.get(&model_name)
+                            .map(|entry| entry.downloaded_bytes)
+                            .unwrap_or(0)
                     },
-                );
+                    total_bytes: {
+                        let map = downloads.inner.lock();
+                        map.get(&model_name).and_then(|entry| entry.total_bytes)
+                    },
+                    percent: Some(100.0),
+                    status: "completed",
+                    error: None,
+                },
+            );
 
             let should_reload = {
                 let runtime = whisper.inner.lock();
@@ -398,8 +465,7 @@ fn download_model_task(
                     },
                     total_bytes: {
                         let map = downloads.inner.lock();
-                        map.get(&model_name)
-                            .and_then(|entry| entry.total_bytes)
+                        map.get(&model_name).and_then(|entry| entry.total_bytes)
                     },
                     percent: None,
                     status: "error",
@@ -508,7 +574,10 @@ fn transcribe_audio(
 
     // Skip transcription for very short audio (< 0.3s at 16kHz)
     if audio_data.len() < 4800 {
-        println!("Audio too short ({} samples), skipping transcription", audio_data.len());
+        println!(
+            "Audio too short ({} samples), skipping transcription",
+            audio_data.len()
+        );
         return Ok(String::new());
     }
 
@@ -530,8 +599,9 @@ fn transcribe_audio(
     // Use half of available CPU threads (leave room for other processes)
     let n_threads = (std::thread::available_parallelism()
         .map(|n| n.get())
-        .unwrap_or(4) / 2)
-        .max(1);
+        .unwrap_or(4)
+        / 2)
+    .max(1);
     params.set_n_threads(n_threads as i32);
 
     // Run transcription
@@ -698,7 +768,6 @@ impl AudioRecorder {
 
         audio_data
     }
-
 }
 
 fn build_input_stream<T>(
@@ -861,7 +930,9 @@ fn remove_model(
 
     if is_active {
         println!("remove_model abort: {} is active", model_name);
-        return Err("Model is currently active. Switch to another model before removing.".to_string());
+        return Err(
+            "Model is currently active. Switch to another model before removing.".to_string(),
+        );
     }
 
     {
@@ -875,8 +946,7 @@ fn remove_model(
 
     let model_path = get_model_path_for(&app, &model_name);
     if model_path.exists() {
-        std::fs::remove_file(&model_path)
-            .map_err(|e| format!("Failed to remove model: {}", e))?;
+        std::fs::remove_file(&model_path).map_err(|e| format!("Failed to remove model: {}", e))?;
         println!("Removed file: {:?}", model_path);
     } else {
         println!("remove_model abort: file not found for {}", model_name);
@@ -1002,14 +1072,15 @@ async fn switch_model(
             },
             total_bytes: {
                 let map = downloads.inner().inner.lock();
-                map.get(&model_name)
-                    .and_then(|entry| entry.total_bytes)
+                map.get(&model_name).and_then(|entry| entry.total_bytes)
             },
             percent: Some(100.0),
             status: "active",
             error: None,
         },
     );
+
+    persist_selected_model(&app, &model_name);
 
     let _ = app.emit(
         "active-model-changed",
@@ -1067,7 +1138,8 @@ pub fn run() {
                 .expect("Failed to register shortcuts")
                 .with_handler(move |app, shortcut, event| {
                     if shortcut.matches(Modifiers::ALT, Code::Space)
-                        || shortcut.matches(Modifiers::ALT | Modifiers::CONTROL, Code::Space) {
+                        || shortcut.matches(Modifiers::ALT | Modifiers::CONTROL, Code::Space)
+                    {
                         if let Some(tray) = app.tray_by_id(TRAY_ID) {
                             match event.state {
                                 ShortcutState::Pressed => {
@@ -1105,9 +1177,11 @@ pub fn run() {
                                     let whisper_state: tauri::State<WhisperManager> = app.state();
                                     let transcription = {
                                         let mut runtime = whisper_state.inner().inner.lock();
-                                        let model_name = runtime.current_model.clone().unwrap_or_default();
+                                        let model_name =
+                                            runtime.current_model.clone().unwrap_or_default();
                                         if let Some(ctx) = runtime.context.as_mut() {
-                                            match transcribe_audio(ctx, &audio_samples, &model_name) {
+                                            match transcribe_audio(ctx, &audio_samples, &model_name)
+                                            {
                                                 Ok(text) => text,
                                                 Err(e) => {
                                                     eprintln!("Transcription failed: {}", e);
@@ -1122,9 +1196,13 @@ pub fn run() {
                                     // Insert transcribed text only if not empty
                                     if !transcription.is_empty()
                                         && transcription != "[Model not loaded]"
-                                        && transcription != "[Transcription failed]" {
+                                        && transcription != "[Transcription failed]"
+                                    {
                                         match insert_text_at_cursor(app, &transcription) {
-                                            Ok(_) => println!("Inserted transcription ({:.2}s): {}", duration_secs, transcription),
+                                            Ok(_) => println!(
+                                                "Inserted transcription ({:.2}s): {}",
+                                                duration_secs, transcription
+                                            ),
                                             Err(e) => eprintln!("Failed to insert text: {}", e),
                                         }
                                     } else {
@@ -1158,28 +1236,29 @@ pub fn run() {
             let whisper_state: tauri::State<WhisperManager> = app.state();
             let app_handle = app.handle();
 
-            let default_model_name = DEFAULT_MODEL.to_string();
-            let default_path = get_model_path_for(&app_handle, DEFAULT_MODEL);
-            let default_exists = default_path.exists();
+            let startup_model_name =
+                load_selected_model(&app_handle).unwrap_or_else(|| DEFAULT_MODEL.to_string());
+            let startup_path = get_model_path_for(&app_handle, &startup_model_name);
+            let startup_exists = startup_path.exists();
 
-            let model_ready = if default_exists {
-                println!("Whisper model found, loading...");
-                match load_whisper_model_for(&app_handle, DEFAULT_MODEL) {
+            let model_ready = if startup_exists {
+                println!("Whisper model '{}' found, loading...", startup_model_name);
+                match load_whisper_model_for(&app_handle, &startup_model_name) {
                     Ok(ctx) => {
                         {
                             let mut runtime = whisper_state.inner().inner.lock();
                             runtime.context = Some(ctx);
-                            runtime.current_model = Some(default_model_name.clone());
+                            runtime.current_model = Some(startup_model_name.clone());
                         }
 
                         {
                             let mut map = download_state.inner().inner.lock();
                             let entry = map
-                                .entry(default_model_name.clone())
+                                .entry(startup_model_name.clone())
                                 .or_insert_with(|| DownloadRecord::new(DownloadStatus::Completed));
                             entry.status = DownloadStatus::Completed;
                             entry.error = None;
-                            if let Ok(meta) = std::fs::metadata(&default_path) {
+                            if let Ok(meta) = fs::metadata(&startup_path) {
                                 let len = meta.len();
                                 entry.downloaded_bytes = len;
                                 entry.total_bytes = Some(len);
@@ -1189,16 +1268,16 @@ pub fn run() {
                         emit_download_event(
                             &app_handle,
                             DownloadEventPayload {
-                                model_name: default_model_name.clone(),
+                                model_name: startup_model_name.clone(),
                                 downloaded_bytes: {
                                     let map = download_state.inner().inner.lock();
-                                    map.get(&default_model_name)
+                                    map.get(&startup_model_name)
                                         .map(|entry| entry.downloaded_bytes)
                                         .unwrap_or(0)
                                 },
                                 total_bytes: {
                                     let map = download_state.inner().inner.lock();
-                                    map.get(&default_model_name)
+                                    map.get(&startup_model_name)
                                         .and_then(|entry| entry.total_bytes)
                                 },
                                 percent: Some(100.0),
@@ -1207,41 +1286,54 @@ pub fn run() {
                             },
                         );
 
+                        persist_selected_model(&app_handle, &startup_model_name);
+
                         let _ = app_handle.emit(
                             "active-model-changed",
                             ActiveModelPayload {
-                                model_name: Some(default_model_name.clone()),
+                                model_name: Some(startup_model_name.clone()),
                             },
                         );
 
-                        println!("Whisper model initialized successfully");
+                        println!(
+                            "Whisper model '{}' initialized successfully",
+                            startup_model_name
+                        );
                         true
                     }
                     Err(e) => {
-                        eprintln!("Failed to load Whisper model: {}", e);
+                        eprintln!(
+                            "Failed to load Whisper model '{}': {}",
+                            startup_model_name, e
+                        );
                         false
                     }
                 }
             } else {
                 println!(
-                    "Whisper model not found at: {:?}. Starting download...",
-                    default_path
+                    "Whisper model '{}' not found at: {:?}. Starting download...",
+                    startup_model_name, startup_path
                 );
 
                 {
                     let mut runtime = whisper_state.inner().inner.lock();
-                    runtime.current_model = Some(default_model_name.clone());
+                    runtime.current_model = Some(startup_model_name.clone());
                     runtime.context = None;
                 }
+
+                persist_selected_model(&app_handle, &startup_model_name);
 
                 if let Err(err) = spawn_model_download(
                     &app_handle,
                     download_state.inner().clone(),
                     whisper_state.inner().clone(),
-                    default_model_name.clone(),
+                    startup_model_name.clone(),
                     false,
                 ) {
-                    eprintln!("Failed to start default model download: {}", err);
+                    eprintln!(
+                        "Failed to start download for '{}': {}",
+                        startup_model_name, err
+                    );
                 }
 
                 false
