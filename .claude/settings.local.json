@@ -25,7 +25,13 @@
       "Bash(gh pr view:*)",
       "Bash(git add:*)",
       "Bash(git commit -m \"$(cat <<''EOF''\nAdd support for dual hotkey combinations\n\nAdds Ctrl+Option+Space as an alternative hotkey alongside the existing Option+Space, both triggering the same voice recording functionality.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh release create:*)",
+      "Bash(src-tauri/target/release/bundle/dmg/Sotto_0.3.0_aarch64.dmg)",
+      "Bash(git commit:*)",
+      "Bash(npm run build:dmg:*)",
+      "Bash(src-tauri/target/release/bundle/dmg/Sotto_0.3.1_aarch64.dmg)"
     ],
     "deny": [],
     "ask": []
