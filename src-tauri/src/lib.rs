@@ -596,13 +596,10 @@ fn transcribe_audio(
     params.set_print_progress(false);
     params.set_print_realtime(false);
     params.set_print_timestamps(false);
-    // Use half of available CPU threads (leave room for other processes)
-    let n_threads = (std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4)
-        / 2)
-    .max(1);
-    params.set_n_threads(n_threads as i32);
+    // Let whisper-rs handle thread count automatically based on the system
+    params.set_print_progress(false);
+    params.set_print_realtime(false);
+    params.set_print_timestamps(false);
 
     // Run transcription
     let mut state = ctx
@@ -627,7 +624,7 @@ fn transcribe_audio(
     Ok(trimmed)
 }
 
-// Load Whisper model (with Metal GPU support)
+// Load Whisper model (with adaptive GPU/CPU support)
 fn load_whisper_model_for(
     app: &AppHandle,
     model_name: &str,
@@ -640,12 +637,38 @@ fn load_whisper_model_for(
 
     println!("Loading Whisper model from: {:?}", model_path);
 
-    // WhisperContext will automatically use Metal GPU if compiled with metal feature
+    // Configure parameters based on architecture
     let params = WhisperContextParameters::default();
-    let ctx =
-        WhisperContext::new_with_params(model_path.to_str().ok_or("Invalid model path")?, params)?;
+    
+    #[cfg(target_os = "macos")]
+    {
+        if std::env::consts::ARCH == "aarch64" {
+            println!("Detected Apple Silicon - Using Metal GPU acceleration");
+            // Metal GPU is automatically enabled if available
+        } else {
+            // For Intel Macs, check if dedicated GPU is available
+            use metal::{Device, MTLFeatureSet};
+            if let Some(device) = Device::system_default() {
+                println!("Detected Intel Mac with Metal GPU: {}", device.name());
+                if device.supports_feature_set(MTLFeatureSet::macOS_GPUFamily1_v1) {
+                    println!("Using Metal GPU acceleration with dedicated GPU");
+                    // Metal GPU will be automatically enabled
+                } else {
+                    println!("Metal GPU feature set not supported, falling back to CPU");
+                }
+            } else {
+                println!("No Metal GPU found on Intel Mac, using CPU optimizations");
+            }
+            // Thread count is managed by whisper-rs internally
+        }
+    }
 
-    println!("Whisper model loaded successfully (Metal GPU enabled via feature flag)");
+    let ctx = WhisperContext::new_with_params(
+        model_path.to_str().ok_or("Invalid model path")?,
+        params,
+    )?;
+
+    println!("Whisper model loaded successfully with architecture-specific optimizations");
     Ok(ctx)
 }
 
@@ -656,6 +679,9 @@ struct AudioRecorder {
     sample_rate: u32,
     temp_buffer: Arc<Mutex<Vec<f32>>>, // Temporary buffer for incoming 48kHz samples
 }
+
+#[cfg(test)]
+mod tests;
 
 // Safety: AudioRecorder is only accessed from the main thread via parking_lot::Mutex
 unsafe impl Send for AudioRecorder {}

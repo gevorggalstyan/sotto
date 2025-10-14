@@ -1,5 +1,14 @@
+[target.x86_64-apple-darwin]
+rustflags = [
+  "-C", "target-cpu=native",
+  "-C", "target-feature=+sse4.2,+avx,+avx2,+fma",
+  "-C", "link-arg=-L/Library/Developer/CommandLineTools/usr/lib/clang/17/lib/darwin",
+  "-C", "link-arg=-lclang_rt.osx"
+]
+
 [target.aarch64-apple-darwin]
 rustflags = [
+  "-C", "target-cpu=native",
   "-C", "link-arg=-L/Library/Developer/CommandLineTools/usr/lib/clang/17/lib/darwin",
   "-C", "link-arg=-lclang_rt.osx"
 ]
