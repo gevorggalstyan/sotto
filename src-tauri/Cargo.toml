@@ -1,6 +1,6 @@
 [package]
 name = "sotto"
-version = "0.3.1"
+version = "0.3.2"
 description = "Open-source voice transcription app for macOS."
 authors = ["Galstyan"]
 edition = "2021"
@@ -15,13 +15,13 @@ name = "sotto_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.5.1", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
-tauri-plugin-opener = "2"
-tauri-plugin-global-shortcut = "2"
-tauri-plugin-clipboard-manager = "2"
+tauri = { version = "2.9.2", features = ["tray-icon", "image-png"] }
+tauri-plugin-opener = "2.5.2"
+tauri-plugin-global-shortcut = "2.3.1"
+tauri-plugin-clipboard-manager = "2.3.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 image = "0.25"
@@ -31,4 +31,4 @@ enigo = "0.6"
 chrono = "0.4"
 whisper-rs = { version = "0.15", features = ["metal"] }
 rubato = "0.16"
-reqwest = { version = "0.12", features = ["blocking"] }
+reqwest = { version = "0.12.24", features = ["blocking"] }
